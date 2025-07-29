@@ -1,11 +1,74 @@
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 const twilio = require('twilio');
+
+// Initialize Express app
 const app = express();
+const server = http.createServer(app);
+
+// Initialize Socket.io with CORS
+const io = new Server(server, {
+  cors: {
+    origin: [process.env.LOCAL_FRONTEND, process.env.LIVE_FRONTEND1, process.env.LIVE_FRONTEND2].filter(Boolean),
+    methods: ["GET", "POST"],
+    credentials: true
+  }
+});
+
+// Store the current voting status
+let votingStatus = {
+  isOpen: false,
+  lastUpdated: new Date()
+};
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log('A user connected:', socket.id);
+  
+  // Send current voting status to newly connected clients
+  socket.emit('voting_status_update', votingStatus);
+  
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+});
+
+// Function to broadcast voting status to all connected clients
+const broadcastVotingStatus = () => {
+  votingStatus.lastUpdated = new Date();
+  io.emit('voting_status_update', votingStatus);
+  return votingStatus;
+};
+
+// API endpoint to get current voting status
+app.get('/api/voting/status', (req, res) => {
+  res.json(votingStatus);
+});
+
+// API endpoint to update voting status (admin only)
+app.post('/api/voting/status', (req, res) => {
+  // In a real app, you would add authentication/authorization here
+  const { isOpen } = req.body;
+  
+  if (typeof isOpen !== 'boolean') {
+    return res.status(400).json({ error: 'isOpen must be a boolean value' });
+  }
+  
+  votingStatus.isOpen = isOpen;
+  const updatedStatus = broadcastVotingStatus();
+  
+  res.json({
+    success: true,
+    message: `Voting has been ${isOpen ? 'opened' : 'closed'}`,
+    status: updatedStatus
+  });
+});
 const TWILIO_ACCOUNT_SID= process.env.TWILIO_ACCOUNT_SID
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_ACCOUNT_TOKEN
 const TWILIO_PHONE_NUMBER =process.env.TWILIO_PHONE_NUMBER
@@ -1079,10 +1142,12 @@ app.get('/api/registered-guests', async (req, res) => {
   }
 });
 // Start server
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3001;
+
+// Sync database and start server
 sequelize.sync().then(() => {
   console.log('✅ Database synced');
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on ${PORT}`);
+  server.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
   });
 });
