@@ -1,74 +1,11 @@
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
 const cors = require('cors');
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 const twilio = require('twilio');
-
-// Initialize Express app
 const app = express();
-const server = http.createServer(app);
-
-// Initialize Socket.io with CORS
-const io = new Server(server, {
-  cors: {
-    origin: [process.env.LOCAL_FRONTEND, process.env.LIVE_FRONTEND1, process.env.LIVE_FRONTEND2].filter(Boolean),
-    methods: ["GET", "POST"],
-    credentials: true
-  }
-});
-
-// Store the current voting status
-let votingStatus = {
-  isOpen: false,
-  lastUpdated: new Date()
-};
-
-// Socket.io connection handling
-io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
-  
-  // Send current voting status to newly connected clients
-  socket.emit('voting_status_update', votingStatus);
-  
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
-});
-
-// Function to broadcast voting status to all connected clients
-const broadcastVotingStatus = () => {
-  votingStatus.lastUpdated = new Date();
-  io.emit('voting_status_update', votingStatus);
-  return votingStatus;
-};
-
-// API endpoint to get current voting status
-app.get('/api/voting/status', (req, res) => {
-  res.json(votingStatus);
-});
-
-// API endpoint to update voting status (admin only)
-app.post('/api/voting/status', (req, res) => {
-  // In a real app, you would add authentication/authorization here
-  const { isOpen } = req.body;
-  
-  if (typeof isOpen !== 'boolean') {
-    return res.status(400).json({ error: 'isOpen must be a boolean value' });
-  }
-  
-  votingStatus.isOpen = isOpen;
-  const updatedStatus = broadcastVotingStatus();
-  
-  res.json({
-    success: true,
-    message: `Voting has been ${isOpen ? 'opened' : 'closed'}`,
-    status: updatedStatus
-  });
-});
 const TWILIO_ACCOUNT_SID= process.env.TWILIO_ACCOUNT_SID
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_ACCOUNT_TOKEN
 const TWILIO_PHONE_NUMBER =process.env.TWILIO_PHONE_NUMBER
@@ -251,8 +188,10 @@ const Shareholder = sequelize.define('Shareholder', {
   createdAt: 'created_at',
   updatedAt: false,
   freezeTableName: true
-});
+}
 
+)
+;
 
 // Registered User Model
 const RegisteredUser = sequelize.define('registeredusers', {
@@ -392,6 +331,7 @@ async function migrateExistingHolders() {
 
 
 
+
 // Verification Token Model
 const VerificationToken = sequelize.define('VerificationToken', {
   acno: { type: DataTypes.STRING, allowNull: false },
@@ -404,7 +344,7 @@ const VerificationToken = sequelize.define('VerificationToken', {
   timestamps: false,
   freezeTableName: true
 });
-sequelize.sync()
+
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -415,7 +355,7 @@ const transporter = nodemailer.createTransport({
 });
 
 
-const GuestRegistration = sequelize.define('GuestRegistration', {
+const GuestRegistration = sequelize.define('guest_registrations', {
   id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -445,7 +385,7 @@ const GuestRegistration = sequelize.define('GuestRegistration', {
     }
   },
   userType: {
-    type: DataTypes.ENUM('guest', 'regulator', 'press', 'observer', 'auditor'),
+    type: DataTypes.ENUM('guest', 'regulator', 'external-auditor'),
     allowNull: false,
     field: 'user_type'
   },
@@ -468,7 +408,9 @@ const GuestRegistration = sequelize.define('GuestRegistration', {
   timestamps: true,
   freezeTableName: true,
   // hooks: {
-});
+}
+
+);
 
 // Alias for backward compatibility with older route logic
 const RegisteredGuests = GuestRegistration;
@@ -486,7 +428,7 @@ const RegisteredGuests = GuestRegistration;
   //   }
   // }
 
-
+  // sequelize.sync({force:true})
 app.post('/api/check-shareholder', async (req, res) => {
   const { searchTerm } = req.body;
 
@@ -717,7 +659,7 @@ app.post('/api/send-confirmation', async (req, res) => {
     });
 
 
-    const confirmUrl = `https://api.mbenefit.apel.com.ng/api/confirm/${token}`;
+    const confirmUrl =  `https://api.lasaco.com.ng/api/confirm/${token}`;
 
     // Send confirmation email
     await transporter.sendMail({
@@ -743,7 +685,7 @@ app.post('/api/send-confirmation', async (req, res) => {
         
         if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
           await twilioClient.messages.create({
-            body: `Hello ${shareholder.name}, confirm MUTUAL BENEFITS ASSURANCE PLC AGM registration: ${confirmUrl}`,
+            body: `Hello ${shareholder.name}, confirm LASACO ASSURANCE PLC AGM REGISTRATION: ${confirmUrl}`,
             from: process.env.TWILIO_PHONE_NUMBER,
             to: formattedPhone
           });
@@ -851,23 +793,50 @@ app.get('/api/confirm/:token', async (req, res) => {
     await pending.destroy();
 
     // Send success email
+    const zoomLink = `https://us06web.zoom.us/j/86362037837?pwd=6qOUsZP7j11Vf0phxkxNivpfyGt2zg.1`;
+
     await transporter.sendMail({
       from: '"E-Voting Portal" <noreply@agm-registration.apel.com.ng>',
       to: shareholder.email,
-      subject: '✅ Registration Complete - MUTUAL BENEFITS ASSURANCE PLC AGM',
+      subject: '✅ Registration Complete - LASACO ASSURANCE PLC AGM',
       html: `
-        <h2>🎉 Hello ${shareholder.name},</h2>
-        <p>Your registration for the MUTUAL BENEFITS ASSURANCE PLC Annual General Meeting is complete.</p>
-        <p><strong>ACNO:</strong> ${shareholder.acno}</p>
-        <p><strong>Registered Email:</strong> ${shareholder.email}</p>
-        <h3>Next Steps:</h3>
-        <ul>
-          <li>You will receive Zoom meeting details 24 hours before the AGM</li>
-          <li>Login using your registered email: <strong>${shareholder.email}</strong></li>
-        </ul>
-        <p>Thank you for participating!</p>
+      <body style="font-family: Arial, sans-serif; background-color: #f6f9fc; padding: 20px; color: #333;">
+        <div style="max-width: 600px; margin: auto; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+          
+          <h2 style="color:#1075bf; text-align: center;">🎉 Hello ${shareholder.name},</h2>
+          
+          <p style="font-size: 15px; line-height: 1.6;">
+            Your registration for the <strong>LASACO ASSURANCE PLC Annual General Meeting</strong> is now complete.
+          </p>
+    
+          <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+            <p><strong>📌 ACNO:</strong> ${shareholder.acno}</p>
+            <p><strong>📧 Registered Email:</strong> ${shareholder.email}</p>
+          </div>
+    
+          <h3 style="color:#1075bf;">Next Steps:</h3>
+          <p style="font-size: 15px;">Kindly use the link below to join the upcoming meeting:</p>
+    
+          <div style="text-align: center; margin: 20px 0;">
+            <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
+              ✅ Join Zoom Meeting
+            </a>
+          </div>
+    
+          <p style="font-size: 14px; line-height: 1.6;">
+            Please login using your registered email: 
+            <strong>${shareholder.email}</strong>
+          </p>
+    
+          <p style="margin-top: 30px; font-size: 14px; text-align: center; color: #666;">
+            Thank you for participating! <br>
+            <em>— LASACO ASSURANCE PLC Team</em>
+          </p>
+        </div>
+      </body>
       `
     });
+    
 
     // Check if SMS would have been sent (but don't actually send)
     let smsEligible = false;
@@ -897,7 +866,7 @@ app.get('/api/confirm/:token', async (req, res) => {
         <div class="success">✅ Registration Successful</div>
         <div class="details">
           <h2>Hello ${shareholder.name}</h2>
-          <p>Your registration for the MUTUAL BENEFITS ASSURANCE PLC AGM is complete.</p>
+          <p>Your registration for the LASACO ASSURANCE PLC AGM is complete.</p>
           <p><strong>ACNO:</strong> ${shareholder.acno}</p>
           <p><strong>Email:</strong> ${shareholder.email}</p>
           ${smsEligible ? `<p class="sms-notice">📱 SMS notifications are currently disabled</p>` : ''}
@@ -985,6 +954,9 @@ app.get('/api/registered-users', async (req, res) => {
     });
   }
 });
+
+
+
 
 // app.get('/api/registered-users', async (req, res) => {
 //   try {
@@ -1142,12 +1114,10 @@ app.get('/api/registered-guests', async (req, res) => {
   }
 });
 // Start server
-const PORT = process.env.PORT || 3001;
-
-// Sync database and start server
+const PORT = process.env.PORT;
 sequelize.sync().then(() => {
   console.log('✅ Database synced');
-  server.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on ${PORT}`);
   });
 });
