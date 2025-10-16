@@ -659,7 +659,7 @@ app.post('/api/send-confirmation', async (req, res) => {
     });
 
 
-    const confirmUrl =  `https://api.lasaco.com.ng/api/confirm/${token}`;
+    const confirmUrl =  `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
 
     // Send confirmation email
     await transporter.sendMail({
