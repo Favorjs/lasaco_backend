@@ -9,6 +9,7 @@ const app = express();
 const TWILIO_ACCOUNT_SID= process.env.TWILIO_ACCOUNT_SID
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_ACCOUNT_TOKEN
 const TWILIO_PHONE_NUMBER =process.env.TWILIO_PHONE_NUMBER
+const fetch = require('node-fetch');
 
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
@@ -347,33 +348,142 @@ const VerificationToken = sequelize.define('VerificationToken', {
 
 // Nodemailer setup
 // Railway SMTP configuration
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: process.env.SMTP_PORT || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER || process.env.EMAIL_USER,
-    pass: process.env.SMTP_PASSWORD || process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false // optional, helps with self-signed certs
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000
-});
-const testEmailConnection = async () => {
-  try {
-    console.log('🔄 Testing email connection...');
-    await transporter.verify();
-    console.log('✅ Email server connection established');
-  } catch (error) {
-    console.error('❌ Email connection failed:', error.message);
-    console.log('💡 Email functionality will be disabled');
-  }
-};
+// const transporter = nodemailer.createTransport({
+//   host: process.env.SMTP_HOST || 'smtp.gmail.com',
+//   port: process.env.SMTP_PORT || 587,
+//   secure: false,
+//   auth: {
+//     user: process.env.SMTP_USER || process.env.EMAIL_USER,
+//     pass: process.env.SMTP_PASSWORD || process.env.EMAIL_PASS
+//   },
+//   tls: {
+//     rejectUnauthorized: false // optional, helps with self-signed certs
+//   },
+//   connectionTimeout: 10000,
+//   greetingTimeout: 10000,
+//   socketTimeout: 15000
+// });
+// const testEmailConnection = async () => {
+//   try {
+//     console.log('🔄 Testing email connection...');
+//     await transporter.verify();
+//     console.log('✅ Email server connection established');
+//   } catch (error) {
+//     console.error('❌ Email connection failed:', error.message);
+//     console.log('💡 Email functionality will be disabled');
+//   }
+// };
 
-testEmailConnection();
+// testEmailConnection();
+
+
+
+
+
+// Zoho Mail API Configuration
+class ZohoMailService {
+  constructor() {
+    this.clientId = process.env.ZOHO_CLIENT_ID;
+    this.clientSecret = process.env.ZOHO_CLIENT_SECRET;
+    this.refreshToken = process.env.ZOHO_REFRESH_TOKEN;
+    this.fromEmail = process.env.ZOHO_FROM_EMAIL || 'noreply@lasaco.com.ng';
+    this.fromName = 'LASACO AGM';
+    this.accessToken = null;
+  }
+
+  // Get access token using refresh token
+  async getAccessToken() {
+    try {
+      const response = await fetch('https://accounts.zoho.com/oauth/v2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+          refresh_token: this.refreshToken
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(`Zoho API Error: ${data.error} - ${data.error_description}`);
+      }
+
+      this.accessToken = data.access_token;
+      console.log('✅ Zoho access token obtained');
+      return this.accessToken;
+    } catch (error) {
+      console.error('❌ Zoho token refresh failed:', error.message);
+      throw error;
+    }
+  }
+
+  // Send email via Zoho API
+  async sendEmail(to, subject, html) {
+    try {
+      if (!this.accessToken) {
+        await this.getAccessToken();
+      }
+
+      const emailData = {
+        fromAddress: this.fromEmail,
+        toAddress: to,
+        subject: subject,
+        content: html,
+        mailFormat: 'html'
+      };
+
+      const response = await fetch('https://mail.zoho.com/api/accounts/self/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(emailData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // If token expired, refresh and retry once
+        if (response.status === 401) {
+          console.log('🔄 Token expired, refreshing...');
+          await this.getAccessToken();
+          return await this.sendEmail(to, subject, html);
+        }
+        throw new Error(`Zoho API Error: ${result.message || response.statusText}`);
+      }
+
+      console.log(`✅ Email sent via Zoho API to ${to}`);
+      return { success: true, messageId: result.data?.messageId };
+    } catch (error) {
+      console.error('❌ Zoho API email failed:', error.message);
+      throw error;
+    }
+  }
+
+  // Test connection
+  async testConnection() {
+    try {
+      await this.getAccessToken();
+      console.log('✅ Zoho Mail API connection established');
+      return true;
+    } catch (error) {
+      console.error('❌ Zoho Mail API connection failed');
+      return false;
+    }
+  }
+}
+
+// Initialize Zoho Mail Service
+const zohoMail = new ZohoMailService();
+
+// Test connection on startup
+zohoMail.testConnection();
 const GuestRegistration = sequelize.define('guest_registrations', {
   id: {
     type: DataTypes.INTEGER,
@@ -841,28 +951,52 @@ app.post('/api/send-confirmation', async (req, res) => {
 
     try {
       // Send confirmation email with timeout
-      const emailPromise = transporter.sendMail({
-        from: 'E-Registration <noreply@agm-registration.apel.com.ng>',
-        to: shareholder.email,
-        subject: 'Confirm Your Registration',
-        html: `
-          <h2>🗳️ E-Voting Registration</h2>
-          <p>Hello ${shareholder.name},</p>
-          <p>Click the button below to confirm your registration:</p>
-          <a href="${confirmUrl}" style="background-color:#1075bf;padding:12px 20px;color:#fff;text-decoration:none;border-radius:5px;">
-            ✅ Confirm Registration
-          </a>
-          <p>If you didn't request this, please ignore this email.</p>
-          <p><small>Token expires at: ${expiresAt.toLocaleString()}</small></p>
-        `
-      });
+      const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+        <div style="text-align: center; background-color: #1075bf; padding: 20px; border-radius: 10px 10px 0 0;">
+          <h1 style="color: white; margin: 0;">🗳️ LASACO ASSURANCE PLC</h1>
+          <p style="color: white; margin: 5px 0 0 0;">Annual General Meeting Registration</p>
+        </div>
+        
+        <div style="padding: 30px 20px;">
+          <h2 style="color: #333;">Hello ${shareholder.name},</h2>
+          <p>Thank you for registering for the LASACO ASSURANCE PLC Annual General Meeting.</p>
+          <p>Please click the button below to confirm your registration:</p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${confirmUrl}" 
+               style="background-color: #1075bf; color: white; padding: 15px 30px; 
+                      text-decoration: none; border-radius: 5px; font-size: 16px; 
+                      font-weight: bold; display: inline-block;">
+              ✅ Confirm Registration
+            </a>
+          </div>
+          
+          <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0;">
+            <p style="margin: 5px 0;"><strong>Account Number:</strong> ${shareholder.acno}</p>
+            <p style="margin: 5px 0;"><strong>Email:</strong> ${shareholder.email}</p>
+            <p style="margin: 5px 0;"><strong>Expires:</strong> ${expiresAt.toLocaleString()}</p>
+          </div>
+          
+          <p style="color: #666; font-size: 14px;">
+            If you did not request this registration, please ignore this email.
+          </p>
+        </div>
+        
+        <div style="background-color: #f8f9fa; padding: 15px; text-align: center; border-radius: 0 0 10px 10px;">
+          <p style="margin: 0; color: #666; font-size: 12px;">
+            LASACO ASSURANCE PLC © ${new Date().getFullYear()}
+          </p>
+        </div>
+      </div>
+    `;
 
       // Add timeout to email sending
       const emailTimeout = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Email timeout')), 10000);
       });
 
-      await Promise.race([emailPromise, emailTimeout]);
+      await Promise.race([zohoMail.sendEmail(shareholder.email, 'Confirm Your Registration - LASACO ASSURANCE PLC AGM', emailHtml), emailTimeout]);
       emailSent = true;
       console.log(`✅ Email sent to ${shareholder.email}`);
 
