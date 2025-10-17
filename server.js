@@ -944,7 +944,7 @@ app.post('/api/send-confirmation', async (req, res) => {
       expires_at: expiresAt 
     });
 
-    const confirmUrl = `http://localhost:2000/api/confirm/${token}`;
+    const confirmUrl = `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
 
     // Email sending with better error handling
     let emailSent = false;
