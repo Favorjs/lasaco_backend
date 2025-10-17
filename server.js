@@ -346,22 +346,18 @@ const VerificationToken = sequelize.define('VerificationToken', {
 });
 
 // Nodemailer setup
+// Railway SMTP configuration
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use TLS
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: process.env.SMTP_PORT || 587,
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
+    user: process.env.SMTP_USER || process.env.EMAIL_USER,
+    pass: process.env.SMTP_PASSWORD || process.env.EMAIL_PASS
   },
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,   // 10 seconds
-  socketTimeout: 15000,     // 15 seconds
-  pool: true,               // Use connection pooling
-  maxConnections: 5,        // Maximum number of connections
-  maxMessages: 100,         // Maximum messages per connection
-  rateDelta: 1000,          // Rate limiting
-  rateLimit: 5              // Maximum messages per rateDelta
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 15000
 });
 const testEmailConnection = async () => {
   try {
