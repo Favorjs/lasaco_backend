@@ -944,7 +944,7 @@ app.post('/api/send-confirmation', async (req, res) => {
       expires_at: expiresAt 
     });
 
-    const confirmUrl = `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
+    const confirmUrl = `http://localhost:2000/api/confirm/${token}`;
 
     // Email sending with better error handling
     let emailSent = false;
@@ -1139,7 +1139,7 @@ app.get('/api/confirm/:token', async (req, res) => {
     await pending.destroy();
 
     // Send success email
-    const zoomLink = `https://us06web.zoom.us/j/86362037837?pwd=6qOUsZP7j11Vf0phxkxNivpfyGt2zg.1`;
+    const zoomLink = ``;
 await zohoMail.sendEmail(
   shareholder.email,
   '✅ Registration Complete - LASACO ASSURANCE PLC AGM',
