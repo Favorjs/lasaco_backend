@@ -363,6 +363,16 @@ const transporter = nodemailer.createTransport({
   rateDelta: 1000,          // Rate limiting
   rateLimit: 5              // Maximum messages per rateDelta
 });
+const testEmailConnection = async () => {
+  try {
+    console.log('🔄 Testing email connection...');
+    await transporter.verify();
+    console.log('✅ Email server connection established');
+  } catch (error) {
+    console.error('❌ Email connection failed:', error.message);
+    console.log('💡 Email functionality will be disabled');
+  }
+};
 
 testEmailConnection();
 const GuestRegistration = sequelize.define('guest_registrations', {
