@@ -347,7 +347,9 @@ const VerificationToken = sequelize.define('VerificationToken', {
 
 // Nodemailer setup
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use TLS
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -362,7 +364,7 @@ const transporter = nodemailer.createTransport({
   rateLimit: 5              // Maximum messages per rateDelta
 });
 
-
+testEmailConnection();
 const GuestRegistration = sequelize.define('guest_registrations', {
   id: {
     type: DataTypes.INTEGER,
@@ -448,7 +450,7 @@ app.post('/api/check-shareholder', async (req, res) => {
 
   try {
     // Check for exact account number match first
-    if (/^\d+$/.test(cleanTerm)) {
+    if (/^\d+$/.test(cleanTerm)) {send 
       const shareholder = await Shareholder.findOne({ 
         where: { acno: cleanTerm } 
       });
@@ -562,6 +564,179 @@ function formatShareholder(shareholder) {
   };
 }
 // Send confirmation link via email
+// app.post('/api/send-confirmation', async (req, res) => {
+//   const { acno, email, phone_number } = req.body;
+
+//   // Phone number formatting and validation functions
+//   const formatNigerianPhone = (phone) => {
+//     if (!phone) return null;
+//     try {
+//       const phoneString = String(phone).trim();
+//       let cleaned = phoneString.replace(/\D/g, '');
+      
+//       if (cleaned.startsWith('0')) {
+//         return `+234${cleaned.substring(1)}`;
+//       }
+//       if (cleaned.startsWith('234') && cleaned.length === 13) {
+//         return `+${cleaned}`;
+//       }
+//       return phoneString;
+//     } catch (error) {
+//       console.error('Phone formatting error:', error);
+//       return null;
+//     }
+//   };
+
+//   const isValidNigerianPhone = (phone) => {
+//     return phone && /^\+234[789]\d{9}$/.test(String(phone).trim());
+//   };
+
+//   try {
+//     // Check if already registered
+//     const alreadyRegistered = await RegisteredHolders.findOne({ where: { acno } });
+//     if (alreadyRegistered) {
+//       return res.status(400).json({ 
+//         message: '❌ This shareholder is already registered',
+//         details: { acno }
+//       });
+//     }
+
+//     // Find shareholder
+//     const shareholder = await Shareholder.findOne({ where: { acno } });
+//     if (!shareholder) {
+//       return res.status(404).json({ 
+//         message: 'Shareholder not found',
+//         details: { acno }
+//       });
+//     }
+// 1
+//     // Update email if provided and different
+//     if (email && email !== shareholder.email) {
+//       await Shareholder.update({ email }, { where: { acno } });
+//       shareholder.email = email;
+//     }
+
+
+
+//  // Update phone number if provided and different
+//  if (phone_number && phone_number !== shareholder.phone_number) {
+//   const formattedPhone = formatNigerianPhone(phone_number);
+//   if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
+//     await Shareholder.update({ phone_number: formattedPhone }, { where: { acno } });
+//     shareholder.phone_number = formattedPhone;
+//   } else {
+//     return res.status(400).json({
+//       message: '❌ Invalid phone number format',
+//       details: { phone_number }
+//     });
+//   }
+// }
+
+//  // Update phone number if provided
+//  let finalPhoneNumber = shareholder.phone_number;
+//  if (phone_number) {
+//    const formattedPhone = formatNigerianPhone(phone_number);
+//    if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
+//      await Shareholder.update({ phone_number: formattedPhone }, { where: { acno } });
+//      finalPhoneNumber = formattedPhone;
+//    } else {
+//      return res.status(400).json({
+//        message: '❌ Invalid phone number format',
+//        details: { phone_number }
+//      });
+//    }
+//  }
+
+//  // Ensure we have at least one contact method
+//  if (!shareholder.email && !email && !finalPhoneNumber) {
+//    return res.status(400).json({
+//      message: '❌ Either email or phone number is required',
+//      details: { acno }
+//    });
+//  }
+
+    
+//     // Generate verification token
+//     const token = uuidv4();
+//     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes expiry
+
+//     await VerificationToken.create({ 
+//       acno, 
+//       token, 
+//       email: email || shareholder.email, 
+//       phone_number: finalPhoneNumber,
+//       expires_at: expiresAt 
+//     });
+
+
+//     const confirmUrl =  `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
+
+//     // Send confirmation email
+//     await transporter.sendMail({
+//       from: 'E-Registration <noreply@agm-registration.apel.com.ng>',
+//       to: shareholder.email,
+//       subject: 'Confirm Your Registration',
+//       html: `
+//         <h2>🗳️ E-Voting Registration</h2>
+//         <p>Hello ${shareholder.name},</p>
+//         <p>Click the button below to confirm your registration:</p>
+//         <a href="${confirmUrl}" style="background-color:#1075bf;padding:12px 20px;color:#fff;text-decoration:none;border-radius:5px;">
+//           ✅ Confirm Registration
+//         </a>
+//         <p>If you didn't request this, please ignore this email.</p>
+//         <p><small>Token expires at: ${expiresAt.toLocaleString()}</small></p>
+//       `
+//     });
+
+//     // Send SMS if phone number exists
+//     if (shareholder.phone_number) {
+//       try {
+//         const formattedPhone = formatNigerianPhone(shareholder.phone_number);
+        
+//         if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
+//           await twilioClient.messages.create({
+//             body: `Hello ${shareholder.name}, confirm LASACO ASSURANCE PLC AGM REGISTRATION: ${confirmUrl}`,
+//             from: process.env.TWILIO_PHONE_NUMBER,
+//             to: formattedPhone
+//           });
+//           console.log(`SMS sent to ${formattedPhone}`);
+//         } else {
+//           console.warn('Invalid phone number format:', shareholder.phone_number);
+//         }
+//       } catch (smsError) {
+//         console.error('SMS sending failed:', {
+//           error: smsError.message,
+//           phone: shareholder.phone_number,
+//           timestamp: new Date().toISOString()
+//         });
+//       }
+//     }
+
+//     res.json({ 
+//       success: true,
+//       message: '✅ Confirmation sent to your email',
+//       details: {
+//         email: shareholder.email,
+//         phone_number: shareholder.phone_number ? 'SMS sent' : 'No phone number'
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error('Send confirmation error:', {
+//       error: error.message,
+//       stack: error.stack,
+//       timestamp: new Date().toISOString(),
+//       requestBody: req.body
+//     });
+//     res.status(500).json({ 
+//       success: false,
+//       error: 'Failed to send confirmation',
+//       details: error.message 
+//     });
+//   }
+// });
+
+// Send confirmation link via email with better error handling
 app.post('/api/send-confirmation', async (req, res) => {
   const { acno, email, phone_number } = req.body;
 
@@ -607,52 +782,35 @@ app.post('/api/send-confirmation', async (req, res) => {
         details: { acno }
       });
     }
-1
+
     // Update email if provided and different
     if (email && email !== shareholder.email) {
       await Shareholder.update({ email }, { where: { acno } });
       shareholder.email = email;
     }
 
+    // Update phone number if provided
+    let finalPhoneNumber = shareholder.phone_number;
+    if (phone_number) {
+      const formattedPhone = formatNigerianPhone(phone_number);
+      if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
+        await Shareholder.update({ phone_number: formattedPhone }, { where: { acno } });
+        finalPhoneNumber = formattedPhone;
+      } else {
+        return res.status(400).json({
+          message: '❌ Invalid phone number format',
+          details: { phone_number }
+        });
+      }
+    }
 
-
- // Update phone number if provided and different
- if (phone_number && phone_number !== shareholder.phone_number) {
-  const formattedPhone = formatNigerianPhone(phone_number);
-  if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
-    await Shareholder.update({ phone_number: formattedPhone }, { where: { acno } });
-    shareholder.phone_number = formattedPhone;
-  } else {
-    return res.status(400).json({
-      message: '❌ Invalid phone number format',
-      details: { phone_number }
-    });
-  }
-}
-
- // Update phone number if provided
- let finalPhoneNumber = shareholder.phone_number;
- if (phone_number) {
-   const formattedPhone = formatNigerianPhone(phone_number);
-   if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
-     await Shareholder.update({ phone_number: formattedPhone }, { where: { acno } });
-     finalPhoneNumber = formattedPhone;
-   } else {
-     return res.status(400).json({
-       message: '❌ Invalid phone number format',
-       details: { phone_number }
-     });
-   }
- }
-
- // Ensure we have at least one contact method
- if (!shareholder.email && !email && !finalPhoneNumber) {
-   return res.status(400).json({
-     message: '❌ Either email or phone number is required',
-     details: { acno }
-   });
- }
-
+    // Ensure we have at least one contact method
+    if (!shareholder.email && !email && !finalPhoneNumber) {
+      return res.status(400).json({
+        message: '❌ Either email or phone number is required',
+        details: { acno }
+      });
+    }
     
     // Generate verification token
     const token = uuidv4();
@@ -666,30 +824,52 @@ app.post('/api/send-confirmation', async (req, res) => {
       expires_at: expiresAt 
     });
 
+    const confirmUrl = `https://api.lasaco.com.ng/api/confirm/${token}`;
 
-    const confirmUrl =  `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
+    // Email sending with better error handling
+    let emailSent = false;
+    let smsSent = false;
 
-    // Send confirmation email
-    await transporter.sendMail({
-      from: 'E-Registration <noreply@agm-registration.apel.com.ng>',
-      to: shareholder.email,
-      subject: 'Confirm Your Registration',
-      html: `
-        <h2>🗳️ E-Voting Registration</h2>
-        <p>Hello ${shareholder.name},</p>
-        <p>Click the button below to confirm your registration:</p>
-        <a href="${confirmUrl}" style="background-color:#1075bf;padding:12px 20px;color:#fff;text-decoration:none;border-radius:5px;">
-          ✅ Confirm Registration
-        </a>
-        <p>If you didn't request this, please ignore this email.</p>
-        <p><small>Token expires at: ${expiresAt.toLocaleString()}</small></p>
-      `
-    });
+    try {
+      // Send confirmation email with timeout
+      const emailPromise = transporter.sendMail({
+        from: 'E-Registration <noreply@agm-registration.apel.com.ng>',
+        to: shareholder.email,
+        subject: 'Confirm Your Registration',
+        html: `
+          <h2>🗳️ E-Voting Registration</h2>
+          <p>Hello ${shareholder.name},</p>
+          <p>Click the button below to confirm your registration:</p>
+          <a href="${confirmUrl}" style="background-color:#1075bf;padding:12px 20px;color:#fff;text-decoration:none;border-radius:5px;">
+            ✅ Confirm Registration
+          </a>
+          <p>If you didn't request this, please ignore this email.</p>
+          <p><small>Token expires at: ${expiresAt.toLocaleString()}</small></p>
+        `
+      });
+
+      // Add timeout to email sending
+      const emailTimeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Email timeout')), 10000);
+      });
+
+      await Promise.race([emailPromise, emailTimeout]);
+      emailSent = true;
+      console.log(`✅ Email sent to ${shareholder.email}`);
+
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', {
+        error: emailError.message,
+        email: shareholder.email,
+        timestamp: new Date().toISOString()
+      });
+      // Continue even if email fails - we'll try SMS
+    }
 
     // Send SMS if phone number exists
-    if (shareholder.phone_number) {
+    if (finalPhoneNumber) {
       try {
-        const formattedPhone = formatNigerianPhone(shareholder.phone_number);
+        const formattedPhone = formatNigerianPhone(finalPhoneNumber);
         
         if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
           await twilioClient.messages.create({
@@ -697,27 +877,40 @@ app.post('/api/send-confirmation', async (req, res) => {
             from: process.env.TWILIO_PHONE_NUMBER,
             to: formattedPhone
           });
-          console.log(`SMS sent to ${formattedPhone}`);
+          smsSent = true;
+          console.log(`✅ SMS sent to ${formattedPhone}`);
         } else {
-          console.warn('Invalid phone number format:', shareholder.phone_number);
+          console.warn('Invalid phone number format:', finalPhoneNumber);
         }
       } catch (smsError) {
         console.error('SMS sending failed:', {
           error: smsError.message,
-          phone: shareholder.phone_number,
+          phone: finalPhoneNumber,
           timestamp: new Date().toISOString()
         });
       }
     }
 
-    res.json({ 
-      success: true,
-      message: '✅ Confirmation sent to your email',
-      details: {
-        email: shareholder.email,
-        phone_number: shareholder.phone_number ? 'SMS sent' : 'No phone number'
-      }
-    });
+    // Return appropriate response based on what was sent
+    if (emailSent || smsSent) {
+      res.json({ 
+        success: true,
+        message: '✅ Confirmation sent successfully',
+        details: {
+          email: emailSent ? 'Sent' : 'Failed',
+          sms: smsSent ? 'Sent' : finalPhoneNumber ? 'Failed' : 'No phone number'
+        }
+      });
+    } else {
+      res.status(500).json({ 
+        success: false,
+        message: '❌ Failed to send confirmation via both email and SMS',
+        details: {
+          email: 'Failed',
+          sms: finalPhoneNumber ? 'Failed' : 'No phone number'
+        }
+      });
+    }
 
   } catch (error) {
     console.error('Send confirmation error:', {
@@ -726,13 +919,15 @@ app.post('/api/send-confirmation', async (req, res) => {
       timestamp: new Date().toISOString(),
       requestBody: req.body
     });
+    
     res.status(500).json({ 
       success: false,
-      error: 'Failed to send confirmation',
-      details: error.message 
+      error: 'Failed to process registration request',
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Please try again later'
     });
   }
 });
+
 
 // Confirm registration
 app.get('/api/confirm/:token', async (req, res) => {
