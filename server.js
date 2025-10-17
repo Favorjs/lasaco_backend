@@ -386,7 +386,7 @@ class ZohoMailService {
     this.clientId = process.env.ZOHO_CLIENT_ID;
     this.clientSecret = process.env.ZOHO_CLIENT_SECRET;
     this.refreshToken = process.env.ZOHO_REFRESH_TOKEN;
-    this.fromEmail = process.env.ZOHO_FROM_EMAIL || 'noreply@lasaco.com.ng';
+    this.fromEmail = process.env.ZOHO_FROM_EMAIL;
     this.fromName = 'LASACO AGM';
     this.accessToken = null;
   }
@@ -437,7 +437,7 @@ class ZohoMailService {
         mailFormat: 'html'
       };
 
-      const response = await fetch('https://mail.zoho.com/api/accounts/self/messages', {
+      const response = await fetch('https://mail.zoho.com/api/accounts/79419000000008002/messages', {
         method: 'POST',
         headers: {
           'Authorization': `Zoho-oauthtoken ${this.accessToken}`,
@@ -484,6 +484,7 @@ const zohoMail = new ZohoMailService();
 
 // Test connection on startup
 zohoMail.testConnection();
+
 const GuestRegistration = sequelize.define('guest_registrations', {
   id: {
     type: DataTypes.INTEGER,
@@ -943,7 +944,7 @@ app.post('/api/send-confirmation', async (req, res) => {
       expires_at: expiresAt 
     });
 
-    const confirmUrl = `https://api.lasaco.com.ng/api/confirm/${token}`;
+    const confirmUrl = `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
 
     // Email sending with better error handling
     let emailSent = false;
@@ -953,11 +954,10 @@ app.post('/api/send-confirmation', async (req, res) => {
       // Send confirmation email with timeout
       const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
-        <div style="text-align: center; background-color: #1075bf; padding: 20px; border-radius: 10px 10px 0 0;">
-          <h1 style="color: white; margin: 0;">🗳️ LASACO ASSURANCE PLC</h1>
-          <p style="color: white; margin: 5px 0 0 0;">Annual General Meeting Registration</p>
-        </div>
-        
+       
+          <h1 style="color: black; margin: 0;"> LASACO ASSURANCE PLC</h1>
+          <p style="color: black; margin: 5px 0 0 0;">Annual General Meeting Registration</p>
+  
         <div style="padding: 30px 20px;">
           <h2 style="color: #333;">Hello ${shareholder.name},</h2>
           <p>Thank you for registering for the LASACO ASSURANCE PLC Annual General Meeting.</p>
@@ -1140,48 +1140,47 @@ app.get('/api/confirm/:token', async (req, res) => {
 
     // Send success email
     const zoomLink = `https://us06web.zoom.us/j/86362037837?pwd=6qOUsZP7j11Vf0phxkxNivpfyGt2zg.1`;
+await zohoMail.sendEmail(
+  shareholder.email,
+  '✅ Registration Complete - LASACO ASSURANCE PLC AGM',
+  `
+  <body style="font-family: Arial, sans-serif; background-color: #f6f9fc; padding: 20px; color: #333;">
+    <div style="max-width: 600px; margin: auto; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
+      
+      <h2 style="color:#1075bf; text-align: center;">🎉 Hello ${shareholder.name},</h2>
+      
+      <p style="font-size: 15px; line-height: 1.6;">
+        Your registration for the <strong>LASACO ASSURANCE PLC Annual General Meeting</strong> is now complete.
+      </p>
 
-    await transporter.sendMail({
-      from: '"E-Voting Portal" <noreply@agm-registration.apel.com.ng>',
-      to: shareholder.email,
-      subject: '✅ Registration Complete - LASACO ASSURANCE PLC AGM',
-      html: `
-      <body style="font-family: Arial, sans-serif; background-color: #f6f9fc; padding: 20px; color: #333;">
-        <div style="max-width: 600px; margin: auto; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
-          
-          <h2 style="color:#1075bf; text-align: center;">🎉 Hello ${shareholder.name},</h2>
-          
-          <p style="font-size: 15px; line-height: 1.6;">
-            Your registration for the <strong>LASACO ASSURANCE PLC Annual General Meeting</strong> is now complete.
-          </p>
-    
-          <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>📌 ACNO:</strong> ${shareholder.acno}</p>
-            <p><strong>📧 Registered Email:</strong> ${shareholder.email}</p>
-          </div>
-    
-          <h3 style="color:#1075bf;">Next Steps:</h3>
-          <p style="font-size: 15px;">Kindly use the link below to join the upcoming meeting:</p>
-    
-          <div style="text-align: center; margin: 20px 0;">
-            <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
-              ✅ Join Zoom Meeting
-            </a>
-          </div>
-    
-          <p style="font-size: 14px; line-height: 1.6;">
-            Please login using your registered email: 
-            <strong>${shareholder.email}</strong>
-          </p>
-    
-          <p style="margin-top: 30px; font-size: 14px; text-align: center; color: #666;">
-            Thank you for participating! <br>
-            <em>— LASACO ASSURANCE PLC Team</em>
-          </p>
-        </div>
-      </body>
-      `
-    });
+      <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+        <p><strong>📌 ACNO:</strong> ${shareholder.acno}</p>
+        <p><strong>📧 Registered Email:</strong> ${shareholder.email}</p>
+      </div>
+
+      <h3 style="color:#1075bf;">Next Steps:</h3>
+      <p style="font-size: 15px;">Kindly use the link below to join the upcoming meeting:</p>
+
+      <div style="text-align: center; margin: 20px 0;">
+        <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
+          ✅ Join Zoom Meeting
+        </a>
+      </div>
+
+      <p style="font-size: 14px; line-height: 1.6;">
+        Please login using your registered email: 
+        <strong>${shareholder.email}</strong>
+      </p>
+
+      <p style="margin-top: 30px; font-size: 14px; text-align: center; color: #666;">
+        Thank you for participating! <br>
+        <em>— LASACO ASSURANCE PLC Team</em>
+      </p>
+    </div>
+  </body>
+  `
+);
+
     
 
     // Check if SMS would have been sent (but don't actually send)
