@@ -1139,7 +1139,7 @@ app.get('/api/confirm/:token', async (req, res) => {
     await pending.destroy();
 
     // Send success email
-    const zoomLink = `https://us06web.zoom.us/j/85474039315`;
+    const zoomLink = ``;
 await zohoMail.sendEmail(
   shareholder.email,
   '✅ Registration Complete - LASACO ASSURANCE PLC AGM',
