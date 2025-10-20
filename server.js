@@ -1164,7 +1164,7 @@ await zohoMail.sendEmail(
       <p style="font-size: 15px;">Kindly use the link below to join the upcoming meeting:</p>
 
       <div style="text-align: center; margin: 20px 0;">
-        <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
+        // <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
           ✅ Join Zoom Meeting
         </a>
       </div>
