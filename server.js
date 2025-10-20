@@ -1131,7 +1131,7 @@ app.get('/api/confirm/:token', async (req, res) => {
       shareholding: shareholder.holdings,
       chn: shareholder.chn,
       rin: shareholder.rin,
-      address: shareholder.address
+      // address: shareholder.address
     });
 
     
