@@ -231,7 +231,7 @@ const RegisteredUser = sequelize.define('registeredusers', {
   phone_number: {
     type: DataTypes.STRING,
     allowNull: true,
-    unique: true,
+    unique: false,
   
   },
   shareholding: {
@@ -1131,7 +1131,7 @@ app.get('/api/confirm/:token', async (req, res) => {
       shareholding: shareholder.holdings,
       chn: shareholder.chn,
       rin: shareholder.rin,
-      address: shareholder.address
+      // address: shareholder.address
     });
 
     
@@ -1139,7 +1139,7 @@ app.get('/api/confirm/:token', async (req, res) => {
     await pending.destroy();
 
     // Send success email
-    const zoomLink = ``;
+    const zoomLink = `https://us06web.zoom.us/j/85474039315`;
 await zohoMail.sendEmail(
   shareholder.email,
   '✅ Registration Complete - LASACO ASSURANCE PLC AGM',
