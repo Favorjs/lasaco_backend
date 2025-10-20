@@ -1140,7 +1140,7 @@ app.get('/api/confirm/:token', async (req, res) => {
 
     // Send success email
     // const zoomLink = ``;
-    const zoomLink = `https://us06web.zoom.us/j/85474039315`;
+    // const zoomLink = `https://us06web.zoom.us/j/85474039315`;
     
 await zohoMail.sendEmail(
   shareholder.email,
@@ -1161,13 +1161,13 @@ await zohoMail.sendEmail(
       </div>
 
       <h3 style="color:#1075bf;">Next Steps:</h3>
-      <p style="font-size: 15px;">Kindly use the link below to join the upcoming meeting:</p>
+      <p style="font-size: 15px;">A zoom Link to attend the meeting will be sent out in due time</p>
 
-      <div style="text-align: center; margin: 20px 0;">
-        <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
-          ✅ Join Zoom Meeting
-        </a>
-      </div>
+      // <div style="text-align: center; margin: 20px 0;">
+      //   <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
+      //     ✅ Join Zoom Meeting
+      //   </a>
+      // </div>
 
       <p style="font-size: 14px; line-height: 1.6;">
         Please login using your registered email: 
