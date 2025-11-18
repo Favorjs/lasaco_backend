@@ -380,88 +380,49 @@ const VerificationToken = sequelize.define('VerificationToken', {
 
 
 
-// Zoho Mail API Configuration
-class ZohoMailService {
+
+// Mailgun Email Service Configuration
+class MailgunService {
   constructor() {
-    this.clientId = process.env.ZOHO_CLIENT_ID;
-    this.clientSecret = process.env.ZOHO_CLIENT_SECRET;
-    this.refreshToken = process.env.ZOHO_REFRESH_TOKEN;
-    this.fromEmail = process.env.ZOHO_FROM_EMAIL;
+    this.apiKey = process.env.MAILGUN_API_KEY;
+    this.domain = process.env.MAILGUN_DOMAIN;
+    this.fromEmail = process.env.MAILGUN_FROM_EMAIL;
     this.fromName = 'EUNISELL INTERLINKED AGM';
-    this.accessToken = null;
+    this.baseUrl = `https://api.mailgun.net/v3/${this.domain}`;
   }
 
-  // Get access token using refresh token
-  async getAccessToken() {
-    try {
-      const response = await fetch('https://accounts.zoho.com/oauth/v2/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
-          refresh_token: this.refreshToken
-        })
-      });
-
-      const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(`Zoho API Error: ${data.error} - ${data.error_description}`);
-      }
-
-      this.accessToken = data.access_token;
-      console.log('✅ Zoho access token obtained');
-      return this.accessToken;
-    } catch (error) {
-      console.error('❌ Zoho token refresh failed:', error.message);
-      throw error;
-    }
-  }
-
-  // Send email via Zoho API
+  // Send email via Mailgun API
   async sendEmail(to, subject, html) {
     try {
-      if (!this.accessToken) {
-        await this.getAccessToken();
+      if (!this.apiKey || !this.domain) {
+        throw new Error('Mailgun configuration is missing');
       }
 
-      const emailData = {
-        fromAddress: this.fromEmail,
-        toAddress: to,
-        subject: subject,
-        content: html,
-        mailFormat: 'html'
-      };
+      const formData = new URLSearchParams();
+      formData.append('from', `${this.fromName} <${this.fromEmail}>`);
+      formData.append('to', to);
+      formData.append('subject', subject);
+      formData.append('html', html);
 
-      const response = await fetch('https://mail.zoho.com/api/accounts/79419000000008002/messages', {
+      const response = await fetch(`${this.baseUrl}/messages`, {
         method: 'POST',
         headers: {
-          'Authorization': `Zoho-oauthtoken ${this.accessToken}`,
-          'Content-Type': 'application/json'
+          'Authorization': `Basic ${Buffer.from(`api:${this.apiKey}`).toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
         },
-        body: JSON.stringify(emailData)
+        body: formData
       });
 
-      const result = await response.json();
-
       if (!response.ok) {
-        // If token expired, refresh and retry once
-        if (response.status === 401) {
-          console.log('🔄 Token expired, refreshing...');
-          await this.getAccessToken();
-          return await this.sendEmail(to, subject, html);
-        }
-        throw new Error(`Zoho API Error: ${result.message || response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Mailgun API Error: ${response.status} - ${errorText}`);
       }
 
-      console.log(`✅ Email sent via Zoho API to ${to}`);
-      return { success: true, messageId: result.data?.messageId };
+      const result = await response.json();
+      console.log(`✅ Email sent via Mailgun to ${to}`);
+      return { success: true, messageId: result.id };
     } catch (error) {
-      console.error('❌ Zoho API email failed:', error.message);
+      console.error('❌ Mailgun API email failed:', error.message);
       throw error;
     }
   }
@@ -469,21 +430,32 @@ class ZohoMailService {
   // Test connection
   async testConnection() {
     try {
-      await this.getAccessToken();
-      console.log('✅ Zoho Mail API connection established');
-      return true;
+      // Test by checking domain status
+      const response = await fetch(`${this.baseUrl}/stats/total`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${Buffer.from(`api:${this.apiKey}`).toString('base64')}`
+        }
+      });
+
+      if (response.ok) {
+        console.log('✅ Mailgun API connection established');
+        return true;
+      } else {
+        throw new Error(`Mailgun test failed: ${response.status}`);
+      }
     } catch (error) {
-      console.error('❌ Zoho Mail API connection failed');
+      console.error('❌ Mailgun API connection failed:', error.message);
       return false;
     }
   }
 }
 
-// Initialize Zoho Mail Service
-const zohoMail = new ZohoMailService();
+// Initialize Mailgun Service
+const mailgunService = new MailgunService();
 
 // Test connection on startup
-zohoMail.testConnection();
+mailgunService.testConnection();
 
 const GuestRegistration = sequelize.define('guest_registrations', {
   id: {
@@ -789,7 +761,7 @@ function formatShareholder(shareholder) {
 //     });
 
 
-//     const confirmUrl =  `https://api.eunisell.apel.com.ng/api/confirm/${token}`;
+//     const confirmUrl =  `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
 
 //     // Send confirmation email
 //     await transporter.sendMail({
@@ -996,7 +968,7 @@ app.post('/api/send-confirmation', async (req, res) => {
         setTimeout(() => reject(new Error('Email timeout')), 10000);
       });
 
-      await Promise.race([zohoMail.sendEmail(shareholder.email, 'Confirm Your Registration - EUNISELL INTERLINKED PLC AGM', emailHtml), emailTimeout]);
+await Promise.race([mailgunService.sendEmail(shareholder.email, 'Confirm Your Registration - EUNISELL INTERLINKED PLC AGM', emailHtml), emailTimeout]);
       emailSent = true;
       console.log(`✅ Email sent to ${shareholder.email}`);
 
@@ -1140,7 +1112,7 @@ app.get('/api/confirm/:token', async (req, res) => {
 
     // Send success email
     const zoomLink = ``;
-await zohoMail.sendEmail(
+await mailgunService.sendEmail(
   shareholder.email,
   '✅ Registration Complete - EUNISELL INTERLINKED PLC AGM',
   `
