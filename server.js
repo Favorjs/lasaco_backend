@@ -789,7 +789,7 @@ function formatShareholder(shareholder) {
 //     });
 
 
-//     const confirmUrl =  `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
+//     const confirmUrl =  `https://api.eunisell.apel.com.ng/api/confirm/${token}`;
 
 //     // Send confirmation email
 //     await transporter.sendMail({
@@ -1139,7 +1139,7 @@ app.get('/api/confirm/:token', async (req, res) => {
     await pending.destroy();
 
     // Send success email
-    const zoomLink = `https://us06web.zoom.us/j/85474039315`;
+    const zoomLink = ``;
 await zohoMail.sendEmail(
   shareholder.email,
   '✅ Registration Complete - EUNISELL INTERLINKED PLC AGM',
@@ -1162,7 +1162,7 @@ await zohoMail.sendEmail(
       <p style="font-size: 15px;">Kindly use the link below to join the upcoming meeting:</p>
 
       <div style="text-align: center; margin: 20px 0;">
-        <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
+        // <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
           ✅ Join Zoom Meeting
         </a>
       </div>
