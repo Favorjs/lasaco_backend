@@ -92,14 +92,29 @@ class MailgunService {
     try {
       // Simple domain verification
       const response = await mg.domains.get(this.domain);
+      
+      // Handle different response structures
+      const domainData = response.domain || response;
+      
+      if (!domainData) {
+        console.error('❌ Mailgun connection failed: Invalid response structure');
+        return false;
+      }
+      
       console.log('✅ Mailgun connection established:', {
-        domain: response.domain.name,
-        state: response.domain.state,
-        createdAt: response.domain.created_at
+        domain: domainData.name || this.domain,
+        state: domainData.state || 'unknown',
+        createdAt: domainData.created_at || 'unknown'
       });
       return true;
     } catch (error) {
-      console.error('❌ Mailgun connection failed:', error.message);
+      console.error('❌ Mailgun connection failed:', error.message || error);
+      if (error.response) {
+        console.error('Error details:', {
+          status: error.response.status,
+          body: error.response.body
+        });
+      }
       return false;
     }
   }
