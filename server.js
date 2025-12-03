@@ -468,6 +468,112 @@ const GuestRegistration = sequelize.define('guest_registrations', {
 
 const RegisteredGuests = GuestRegistration;
 
+// Check shareholder endpoint - search by name, account number, or CHN
+app.post('/api/check-shareholder', async (req, res) => {
+  try {
+    const { searchTerm } = req.body;
+
+    if (!searchTerm || !searchTerm.trim()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Search term is required'
+      });
+    }
+
+    const trimmedSearch = searchTerm.trim();
+
+    // First, try exact match by account number
+    const accountMatch = await Shareholder.findOne({
+      where: { acno: trimmedSearch }
+    });
+
+    if (accountMatch) {
+      return res.json({
+        status: 'account_match',
+        shareholder: {
+          acno: accountMatch.acno,
+          name: accountMatch.name,
+          email: accountMatch.email,
+          phone_number: accountMatch.phone_number,
+          holdings: accountMatch.holdings,
+          chn: accountMatch.chn,
+          rin: accountMatch.rin,
+          address: accountMatch.address
+        }
+      });
+    }
+
+    // Second, try exact match by CHN
+    if (trimmedSearch.length >= 5) { // CHN is typically longer
+      const chnMatch = await Shareholder.findOne({
+        where: { chn: trimmedSearch }
+      });
+
+      if (chnMatch) {
+        return res.json({
+          status: 'chn_match',
+          shareholder: {
+            acno: chnMatch.acno,
+            name: chnMatch.name,
+            email: chnMatch.email,
+            phone_number: chnMatch.phone_number,
+            holdings: chnMatch.holdings,
+            chn: chnMatch.chn,
+            rin: chnMatch.rin,
+            address: chnMatch.address
+          }
+        });
+      }
+    }
+
+    // Third, try partial match by name (case-insensitive)
+    const nameMatches = await Shareholder.findAll({
+      where: {
+        name: {
+          [Op.like]: `%${trimmedSearch}%`
+        }
+      },
+      limit: 50, // Limit results to prevent overwhelming response
+      order: [['name', 'ASC']]
+    });
+
+    if (nameMatches && nameMatches.length > 0) {
+      return res.json({
+        status: 'name_matches',
+        shareholders: nameMatches.map(shareholder => ({
+          acno: shareholder.acno,
+          name: shareholder.name,
+          email: shareholder.email,
+          phone_number: shareholder.phone_number,
+          holdings: shareholder.holdings,
+          chn: shareholder.chn,
+          rin: shareholder.rin,
+          address: shareholder.address
+        }))
+      });
+    }
+
+    // No matches found
+    return res.json({
+      status: 'no_match',
+      message: 'No matching shareholders found. Please check your search term and try again.'
+    });
+
+  } catch (error) {
+    console.error('Check shareholder error:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+      requestBody: req.body
+    });
+
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to search shareholders. Please try again later.'
+    });
+  }
+});
+
 // Update the /api/send-confirmation endpoint to use Mailgun
 app.post('/api/send-confirmation', async (req, res) => {
   const { acno, email, phone_number } = req.body;
