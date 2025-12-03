@@ -566,11 +566,11 @@ app.post('/api/send-confirmation', async (req, res) => {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
        
           <h1 style="color: black; margin: 0;"> LASACO ASSURANCE PLC</h1>
-          <p style="color: black; margin: 5px 0 0 0;">Annual General Meeting Registration</p>
+          <p style="color: black; margin: 5px 0 0 0;">Extraordinary General Meeting Registration</p>
   
         <div style="padding: 30px 20px;">
           <h2 style="color: #333;">Hello ${shareholder.name},</h2>
-          <p>Thank you for registering for the LASACO ASSURANCE PLC Annual General Meeting.</p>
+          <p>Thank you for registering for the LASACO ASSURANCE PLC Extraordinary General Meeting.</p>
           <p>Please click the button below to confirm your registration:</p>
           
           <div style="text-align: center; margin: 30px 0;">
@@ -752,7 +752,7 @@ app.get('/api/confirm/:token', async (req, res) => {
         <h2 style="color:#1075bf; text-align: center;">🎉 Hello ${shareholder.name},</h2>
         
         <p style="font-size: 15px; line-height: 1.6;">
-          Your registration for the <strong>LASACO ASSURANCE PLC Annual General Meeting</strong> is now complete.
+          Your registration for the <strong>LASACO ASSURANCE PLC Extraordinary General Meeting</strong> is now complete.
         </p>
 
         <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
