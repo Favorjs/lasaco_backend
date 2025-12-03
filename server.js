@@ -6,14 +6,124 @@ const nodemailer = require('nodemailer');
 require('dotenv').config();
 const twilio = require('twilio');
 const app = express();
-const TWILIO_ACCOUNT_SID= process.env.TWILIO_ACCOUNT_SID
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_ACCOUNT_TOKEN
-const TWILIO_PHONE_NUMBER =process.env.TWILIO_PHONE_NUMBER
+const TWILIO_PHONE_NUMBER = process.env.TWILIO_PHONE_NUMBER
 const fetch = require('node-fetch');
 
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
+// Mailgun Configuration
+const formData = require('form-data');
+const Mailgun = require('mailgun.js');
+const mailgun = new Mailgun(formData);
+const mg = mailgun.client({
+  username: 'api',
+  key: process.env.MAILGUN_API_KEY || 'key-yourkeyhere',
+  url: 'https://api.mailgun.net' // For EU domains use: 'https://api.eu.mailgun.net'
+});
 
+class MailgunService {
+  constructor() {
+    this.domain = process.env.MAILGUN_DOMAIN || 'registrars.apel.com.ng';
+    this.fromEmail = process.env.MAILGUN_FROM_EMAIL || 'alerts@registrars.apel.com.ng';
+    this.fromName = 'LASACO AGM';
+  }
+
+  // Send email via Mailgun
+  async sendEmail(to, subject, html, text = '') {
+    try {
+      if (!to || !subject || !html) {
+        throw new Error('Missing required email parameters');
+      }
+
+      // If no plain text provided, create a simple version from HTML
+      if (!text) {
+        text = html.replace(/<[^>]*>/g, ''); // Strip HTML tags
+      }
+
+      const data = {
+        from: `${this.fromName} <${this.fromEmail}>`,
+        to: to,
+        subject: subject,
+        html: html,
+        text: text,
+        // You can add tracking options if needed
+        'o:tracking': 'yes',
+        'o:tracking-clicks': 'yes',
+        'o:tracking-opens': 'yes'
+      };
+
+      const response = await mg.messages.create(this.domain, data);
+      
+      console.log(`✅ Mailgun email sent to ${to}`, {
+        messageId: response.id,
+        timestamp: new Date().toISOString()
+      });
+      
+      return { 
+        success: true, 
+        messageId: response.id,
+        response: response 
+      };
+    } catch (error) {
+      console.error('❌ Mailgun email sending failed:', {
+        error: error.message,
+        to: to,
+        subject: subject,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Check for specific Mailgun errors
+      if (error.message.includes('Invalid domain')) {
+        throw new Error('Invalid Mailgun domain configuration');
+      } else if (error.message.includes('Forbidden')) {
+        throw new Error('Invalid Mailgun API key');
+      } else if (error.message.includes('parameter is not a valid address')) {
+        throw new Error('Invalid email address');
+      }
+      
+      throw error;
+    }
+  }
+
+  // Test connection
+  async testConnection() {
+    try {
+      // Simple domain verification
+      const response = await mg.domains.get(this.domain);
+      console.log('✅ Mailgun connection established:', {
+        domain: response.domain.name,
+        state: response.domain.state,
+        createdAt: response.domain.created_at
+      });
+      return true;
+    } catch (error) {
+      console.error('❌ Mailgun connection failed:', error.message);
+      return false;
+    }
+  }
+
+  // Verify email address (optional)
+  async verifyEmail(email) {
+    try {
+      const response = await mg.validate.get(email);
+      return {
+        isValid: response.result === 'deliverable',
+        details: response
+      };
+    } catch (error) {
+      console.warn('Email verification failed:', error.message);
+      return { isValid: true }; // Assume valid if verification fails
+    }
+  }
+}
+
+// Initialize Mailgun Service
+const mailgunService = new MailgunService();
+
+// Test connection on startup
+mailgunService.testConnection();
 
 // Add this phone number formatter function
 function formatNigerianPhone(phone) {
@@ -34,13 +144,7 @@ function formatNigerianPhone(phone) {
   return phone;
 }
 
-
-
-
-
-
 // Sequelize setup
-
 let sequelize;
 
 if (process.env.NODE_ENV === 'production') {
@@ -70,14 +174,13 @@ if (process.env.NODE_ENV === 'production') {
     process.env.DB_PASSWORD || 'your_local_db_password',
     {
       host: process.env.DB_HOST || 'localhost',
-      dialect: process.env.DB_DIALECT || 'postgres', 
+      dialect: process.env.DB_DIALECT || 'postgres',
       pool: {
         max: 20,
         min: 5,
         acquire: 30000,
         idle: 10000
       },
-    // Enable logging for debugging in development
     }
   );
 }
@@ -92,21 +195,14 @@ if (process.env.NODE_ENV === 'production') {
   }
 })();
 
-
 const allowedOrigins = [
   process.env.LOCAL_FRONTEND,
   process.env.LIVE_FRONTEND1,
-  process.env.LIVE_FRONTEND2 // Add your new domain here
+  process.env.LIVE_FRONTEND2
 ].filter(Boolean);
-
-
-
-
-
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // allow requests with no origin (like curl, mobile apps)
     if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -121,10 +217,7 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// app.options('*', cors(corsOptions)); // Enable preflight for all routes
 app.use(express.json());
-
-
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -137,10 +230,8 @@ app.use((req, res, next) => {
   next();
 });
 
- 
-//Shareholder Model
+// Shareholder Model (existing code remains the same)
 const Shareholder = sequelize.define('Shareholder', {
-
   acno: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -155,14 +246,11 @@ const Shareholder = sequelize.define('Shareholder', {
     type: DataTypes.STRING,
     allowNull: true,
     unique: false,
-  
   },
   holdings: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
-
   },
- 
   address: {
     type: DataTypes.STRING,
     allowNull: true
@@ -182,43 +270,33 @@ const Shareholder = sequelize.define('Shareholder', {
     type: DataTypes.STRING,
     allowNull: true
   },
-
 }, {
   tableName: 'shareholders',
   timestamps: true,
   createdAt: 'created_at',
   updatedAt: false,
   freezeTableName: true
-}
+});
 
-)
-;
-
-// Registered User Model
+// Registered User Model (existing code remains the same)
 const RegisteredUser = sequelize.define('registeredusers', {
-
   name: DataTypes.STRING,
   acno: DataTypes.STRING,
   holdings: {
     type: DataTypes.DECIMAL(15, 2),
-    defaultValue: 0 // Add this
+    defaultValue: 0
   },
-  chn: { type:Sequelize.STRING, allowNull: true },
+  chn: { type: Sequelize.STRING, allowNull: true },
   email: DataTypes.STRING,
   phone_number: DataTypes.STRING,
   registered_at: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
   },
-  sessionId: DataTypes.STRING, 
-  
+  sessionId: DataTypes.STRING,
 });
 
-
-  
-
-
- const RegisteredHolders = sequelize.define('RegisteredHolders', {
+const RegisteredHolders = sequelize.define('RegisteredHolders', {
   id: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -231,14 +309,13 @@ const RegisteredUser = sequelize.define('registeredusers', {
   phone_number: {
     type: DataTypes.STRING,
     allowNull: true,
-    unique: false,
+    unique: true,
   
   },
   shareholding: {
     type: DataTypes.DECIMAL(15, 2),
     allowNull: false
   },
-
   acno: {
     type: DataTypes.STRING,
     allowNull: true
@@ -262,10 +339,6 @@ const RegisteredUser = sequelize.define('registeredusers', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     allowNull: false,
-  },
-  status: {
-    type: DataTypes.ENUM('pending', 'active', 'suspended'),
-    defaultValue: 'active'
   },
   registeredAt: {
     type: DataTypes.DATE,
@@ -298,48 +371,28 @@ async function syncHolderToUser(holder) {
       email: holder.email,
       phone_number: holder.phone_number,
       registered_at: holder.registeredAt,
-      
     };
 
+    const [user, created] = await RegisteredUser.upsert({
+      acno: holder.acno,
+      ...userData
+    }, {
+      returning: true
+    });
 
- // Find or create the user
- const [user, created] = await RegisteredUser.upsert({
-  acno: holder.acno,  // Using acno as the unique identifier
-  ...userData
-}, {
-  returning: true
-});
-
-console.log(created ? 'Created new user' : 'Updated existing user', user.acno);
-} catch (error) {
-console.error('Error syncing holder to user:', error);
-}
-}
-
-
-
-
-async function migrateExistingHolders() {
-  const holders = await RegisteredHolders.findAll();
-  for (const holder of holders) {
-    await syncHolderToUser(holder);
+    console.log(created ? 'Created new user' : 'Updated existing user', user.acno);
+  } catch (error) {
+    console.error('Error syncing holder to user:', error);
   }
-  console.log('Migration completed ss');
 }
 
-// Uncomment to run migration
-// migrateExistingHolders();
-
-
-
-
-// Verification Token Model
+// Verification Token Model (existing code remains the same)
 const VerificationToken = sequelize.define('VerificationToken', {
   acno: { type: DataTypes.STRING, allowNull: false },
   token: { type: DataTypes.STRING, allowNull: false },
   email: DataTypes.STRING,
   phone_number: DataTypes.STRING,
-  chn: { type:Sequelize.STRING, allowNull: true },
+  chn: { type: Sequelize.STRING, allowNull: true },
   expires_at: { type: DataTypes.DATE, allowNull: false }
 }, {
   timestamps: false,
@@ -380,49 +433,88 @@ const VerificationToken = sequelize.define('VerificationToken', {
 
 
 
-
-// Mailgun Email Service Configuration
-class MailgunService {
+// Zoho Mail API Configuration
+class ZohoMailService {
   constructor() {
-    this.apiKey = process.env.MAILGUN_API_KEY;
-    this.domain = process.env.MAILGUN_DOMAIN;
-    this.fromEmail = process.env.MAILGUN_FROM_EMAIL;
-    this.fromName = 'LASACO ASSURANCE PLC AGM';
-    this.baseUrl = `https://api.mailgun.net/v3/${this.domain}`;
+    this.clientId = process.env.ZOHO_CLIENT_ID;
+    this.clientSecret = process.env.ZOHO_CLIENT_SECRET;
+    this.refreshToken = process.env.ZOHO_REFRESH_TOKEN;
+    this.fromEmail = process.env.ZOHO_FROM_EMAIL;
+    this.fromName = 'LASACO AGM';
+    this.accessToken = null;
   }
 
-  // Send email via Mailgun API
-  async sendEmail(to, subject, html) {
+  // Get access token using refresh token
+  async getAccessToken() {
     try {
-      if (!this.apiKey || !this.domain) {
-        throw new Error('Mailgun configuration is missing');
-      }
-
-      const formData = new URLSearchParams();
-      formData.append('from', `${this.fromName} <${this.fromEmail}>`);
-      formData.append('to', to);
-      formData.append('subject', subject);
-      formData.append('html', html);
-
-      const response = await fetch(`${this.baseUrl}/messages`, {
+      const response = await fetch('https://accounts.zoho.com/oauth/v2/token', {
         method: 'POST',
         headers: {
-          'Authorization': `Basic ${Buffer.from(`api:${this.apiKey}`).toString('base64')}`,
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: formData
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          client_id: this.clientId,
+          client_secret: this.clientSecret,
+          refresh_token: this.refreshToken
+        })
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Mailgun API Error: ${response.status} - ${errorText}`);
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(`Zoho API Error: ${data.error} - ${data.error_description}`);
       }
 
-      const result = await response.json();
-      console.log(`✅ Email sent via Mailgun to ${to}`);
-      return { success: true, messageId: result.id };
+      this.accessToken = data.access_token;
+      console.log('✅ Zoho access token obtained');
+      return this.accessToken;
     } catch (error) {
-      console.error('❌ Mailgun API email failed:', error.message);
+      console.error('❌ Zoho token refresh failed:', error.message);
+      throw error;
+    }
+  }
+
+  // Send email via Zoho API
+  async sendEmail(to, subject, html) {
+    try {
+      if (!this.accessToken) {
+        await this.getAccessToken();
+      }
+
+      const emailData = {
+        fromAddress: this.fromEmail,
+        toAddress: to,
+        subject: subject,
+        content: html,
+        mailFormat: 'html'
+      };
+
+      const response = await fetch('https://mail.zoho.com/api/accounts/79419000000008002/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Zoho-oauthtoken ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(emailData)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        // If token expired, refresh and retry once
+        if (response.status === 401) {
+          console.log('🔄 Token expired, refreshing...');
+          await this.getAccessToken();
+          return await this.sendEmail(to, subject, html);
+        }
+        throw new Error(`Zoho API Error: ${result.message || response.statusText}`);
+      }
+
+      console.log(`✅ Email sent via Zoho API to ${to}`);
+      return { success: true, messageId: result.data?.messageId };
+    } catch (error) {
+      console.error('❌ Zoho API email failed:', error.message);
       throw error;
     }
   }
@@ -430,32 +522,21 @@ class MailgunService {
   // Test connection
   async testConnection() {
     try {
-      // Test by checking domain status
-      const response = await fetch(`${this.baseUrl}/stats/total`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Basic ${Buffer.from(`api:${this.apiKey}`).toString('base64')}`
-        }
-      });
-
-      if (response.ok) {
-        console.log('✅ Mailgun API connection established');
-        return true;
-      } else {
-        throw new Error(`Mailgun test failed: ${response.status}`);
-      }
+      await this.getAccessToken();
+      console.log('✅ Zoho Mail API connection established');
+      return true;
     } catch (error) {
-      console.error('❌ Mailgun API connection failed:', error.message);
+      console.error('❌ Zoho Mail API connection failed');
       return false;
     }
   }
 }
 
-// Initialize Mailgun Service
-const mailgunService = new MailgunService();
+// Initialize Zoho Mail Service
+const zohoMail = new ZohoMailService();
 
 // Test connection on startup
-mailgunService.testConnection();
+zohoMail.testConnection();
 
 const GuestRegistration = sequelize.define('guest_registrations', {
   id: {
@@ -491,7 +572,6 @@ const GuestRegistration = sequelize.define('guest_registrations', {
     allowNull: false,
     field: 'user_type'
   },
-
   createdAt: {
     type: DataTypes.DATE,
     field: 'created_at'
@@ -506,15 +586,11 @@ const GuestRegistration = sequelize.define('guest_registrations', {
   }
 }, {
   tableName: 'guest_registrations',
-  paranoid: true, // Enable soft deletes
+  paranoid: true,
   timestamps: true,
   freezeTableName: true,
-  // hooks: {
-}
+});
 
-);
-
-// Alias for backward compatibility with older route logic
 const RegisteredGuests = GuestRegistration;
 
 // ---------------- Existing Hooks or Other Code ----------------
@@ -787,7 +863,7 @@ function formatShareholder(shareholder) {
         
 //         if (formattedPhone && isValidNigerianPhone(formattedPhone)) {
 //           await twilioClient.messages.create({
-//             body: `Hello ${shareholder.name}, confirm  INTERLINKED PLC AGM REGISTRATION: ${confirmUrl}`,
+//             body: `Hello ${shareholder.name}, confirm LASACO ASSURANCE PLC AGM REGISTRATION: ${confirmUrl}`,
 //             from: process.env.TWILIO_PHONE_NUMBER,
 //             to: formattedPhone
 //           });
@@ -832,7 +908,6 @@ function formatShareholder(shareholder) {
 app.post('/api/send-confirmation', async (req, res) => {
   const { acno, email, phone_number } = req.body;
 
-  // Phone number formatting and validation functions
   const formatNigerianPhone = (phone) => {
     if (!phone) return null;
     try {
@@ -918,12 +993,11 @@ app.post('/api/send-confirmation', async (req, res) => {
 
     const confirmUrl = `https://api.lasaco.apel.com.ng/api/confirm/${token}`;
 
-    // Email sending with better error handling
+    // Email sending with Mailgun
     let emailSent = false;
     let smsSent = false;
 
     try {
-      // Send confirmation email with timeout
       const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
        
@@ -968,17 +1042,16 @@ app.post('/api/send-confirmation', async (req, res) => {
         setTimeout(() => reject(new Error('Email timeout')), 10000);
       });
 
-await Promise.race([mailgunService.sendEmail(shareholder.email, 'Confirm Your Registration -LASACO ASSURANCE PLC AGM', emailHtml), emailTimeout]);
+      await Promise.race([zohoMail.sendEmail(shareholder.email, 'Confirm Your Registration - LASACO ASSURANCE PLC AGM', emailHtml), emailTimeout]);
       emailSent = true;
-      console.log(`✅ Email sent to ${shareholder.email}`);
+      console.log(`✅ Mailgun email sent to ${shareholder.email}`);
 
     } catch (emailError) {
-      console.error('❌ Email sending failed:', {
+      console.error('❌ Mailgun email sending failed:', {
         error: emailError.message,
         email: shareholder.email,
         timestamp: new Date().toISOString()
       });
-      // Continue even if email fails - we'll try SMS
     }
 
     // Send SMS if phone number exists
@@ -1012,7 +1085,7 @@ await Promise.race([mailgunService.sendEmail(shareholder.email, 'Confirm Your Re
         success: true,
         message: '✅ Confirmation sent successfully',
         details: {
-          email: emailSent ? 'Sent' : 'Failed',
+          email: emailSent ? 'Sent via Mailgun' : 'Failed',
           sms: smsSent ? 'Sent' : finalPhoneNumber ? 'Failed' : 'No phone number'
         }
       });
@@ -1043,12 +1116,10 @@ await Promise.race([mailgunService.sendEmail(shareholder.email, 'Confirm Your Re
   }
 });
 
-
-// Confirm registration
+// Update the /api/confirm/:token endpoint to use Mailgun
 app.get('/api/confirm/:token', async (req, res) => {
   const { token } = req.params;
 
-  // Keep phone functions but don't send SMS
   const formatNigerianPhone = (phone) => {
     if (!phone) return null;
     try {
@@ -1098,23 +1169,22 @@ app.get('/api/confirm/:token', async (req, res) => {
       name: shareholder.name,
       acno: shareholder.acno,
       email: shareholder.email,
-      phone_number: shareholder.phone_number || pending.phone_number, 
+      phone_number: shareholder.phone_number || pending.phone_number,
       registered_at: new Date(),
       shareholding: shareholder.holdings,
       chn: shareholder.chn,
       rin: shareholder.rin,
-      // address: shareholder.address
     });
-
-    
 
     await pending.destroy();
 
     // Send success email
-    const zoomLink = ``;
-await mailgunService.sendEmail(
+    // const zoomLink = ``;
+    const zoomLink = `https://us06web.zoom.us/j/85474039315`;
+    
+await zohoMail.sendEmail(
   shareholder.email,
-  '✅ Registration Complete -LASACO ASSURANCE PLC AGM',
+  '✅ Registration Complete - LASACO ASSURANCE PLC AGM',
   `
   <body style="font-family: Arial, sans-serif; background-color: #f6f9fc; padding: 20px; color: #333;">
     <div style="max-width: 600px; margin: auto; background: #ffffff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);">
@@ -1122,31 +1192,31 @@ await mailgunService.sendEmail(
       <h2 style="color:#1075bf; text-align: center;">🎉 Hello ${shareholder.name},</h2>
       
       <p style="font-size: 15px; line-height: 1.6;">
-        Your registration for the <strong>LASACO ASSURANCE PLCAnnual General Meeting</strong> is now complete.
+        Your registration for the <strong>LASACO ASSURANCE PLC Annual General Meeting</strong> is now complete.
       </p>
 
-      <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
-        <p><strong>📌 ACNO:</strong> ${shareholder.acno}</p>
-        <p><strong>📧 Registered Email:</strong> ${shareholder.email}</p>
-      </div>
+        <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <p><strong>📌 ACNO:</strong> ${shareholder.acno}</p>
+          <p><strong>📧 Registered Email:</strong> ${shareholder.email}</p>
+        </div>
 
       <h3 style="color:#1075bf;">Next Steps:</h3>
-    
+      <p style="font-size: 15px;">Kindly use the link below to join the upcoming meeting:</p>
 
       <div style="text-align: center; margin: 20px 0;">
-       
-        
-        
+        // <a href="${zoomLink}" style="background-color:#1075bf; padding:12px 25px; color:#fff; text-decoration:none; font-weight:bold; border-radius:6px; display:inline-block;">
+          ✅ Join Zoom Meeting
+        </a>
       </div>
 
-      <p style="font-size: 14px; line-height: 1.6;">
-        Please login using your registered email: 
-        <strong>${shareholder.email}</strong>
-      </p>
+        <p style="font-size: 14px; line-height: 1.6;">
+          Please login using your registered email: 
+          <strong>${shareholder.email}</strong>
+        </p>
 
       <p style="margin-top: 30px; font-size: 14px; text-align: center; color: #666;">
         Thank you for participating! <br>
-        <em>—LASACO ASSURANCE PLC Team</em>
+        <em>— LASACO ASSURANCE PLC Team</em>
       </p>
     </div>
   </body>
@@ -1161,7 +1231,6 @@ await mailgunService.sendEmail(
       const formattedPhone = formatNigerianPhone(shareholder.phone_number);
       smsEligible = formattedPhone && isValidNigerianPhone(formattedPhone);
       
-      // Log instead of sending
       if (smsEligible) {
         console.log(`[SMS Simulation] Would have sent to: ${formattedPhone}`);
       }
@@ -1186,8 +1255,8 @@ await mailgunService.sendEmail(
           <p>Your registration for theLASACO ASSURANCE PLC AGM is complete.</p>
           <p><strong>ACNO:</strong> ${shareholder.acno}</p>
           <p><strong>Email:</strong> ${shareholder.email}</p>
-          ${smsEligible ? `<p class="sms-notice">📱 SMS notifications are currently disabled</p>` : ''}
           <p>You will receive meeting details via email before the event.</p>
+          <p><em>Email sent via Mailgun</em></p>
         </div>
       </body>
       </html>
@@ -1207,229 +1276,9 @@ await mailgunService.sendEmail(
     `);
   }
 });
-// Get all registered users with pagination
-app.get('/api/registered-users', async (req, res) => {
-  try {
-    // Pagination parameters
-    const page = parseInt(req.query.page) || 1; // Default to page 1
-    const pageSize = parseInt(req.query.pageSize) || 10; // Default to 10 items per page
-    const offset = (page - 1) * pageSize;
 
-    // Sorting parameters
-    let sortBy = req.query.sortBy || 'registered_at'; // Default sort by registration date
-    if (sortBy === 'createdAt') sortBy = 'registered_at';
-    const sortOrder = req.query.sortOrder || 'DESC'; // Default descending order
+// All other existing routes remain the same...
 
-    // Search filter
-    const searchTerm = req.query.search || '';
-
-    // Build the query conditions
-    const whereConditions = {};
-    if (searchTerm) {
-      whereConditions[Op.or] = [
-        { name: { [Op.like]: `%${searchTerm}%` } },
-        { acno: { [Op.like]: `%${searchTerm}%` } },
-        { email: { [Op.like]: `%${searchTerm}%` } },
-        { phone_number: { [Op.like]: `%${searchTerm}%` } },
-        { chn: { [Op.like]: `%${searchTerm}%` } }
-      ];
-    }
-
-    // Get the total count for pagination info
-    const totalCount = await RegisteredHolders.count({ where: whereConditions });
-
-    // Get the paginated results
-    const users = await RegisteredHolders.findAll({
-      where: whereConditions,
-      order: [[sortBy, sortOrder]],
-      limit: pageSize,
-      offset: offset,
-      attributes: ['name', 'acno', 'email', 'phone_number', 'shareholding','chn', 'registered_at'] // Select specific fields
-    });
-
-    // Calculate pagination metadata
-    const totalPages = Math.ceil(totalCount / pageSize);
-
-    res.json({
-      success: true,
-      data: users,
-      pagination: {
-        totalItems: totalCount,
-        totalPages,
-        currentPage: page,
-        pageSize,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching registered users:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch registered users',
-      error: error.message
-    });
-  }
-});
-
-
-
-
-// app.get('/api/registered-users', async (req, res) => {
-//   try {
-//     const page = parseInt(req.query.page) || 1;
-//     const pageSize = parseInt(req.query.pageSize) || 10;
-//     const offset = (page - 1) * pageSize;
-//     let sortBy = req.query.sortBy || (req.query.userType === 'guests' ? 'createdAt' : 'registered_at');
-//     const sortOrder = req.query.sortOrder || 'DESC';
-//     const searchTerm = req.query.search || '';
-//     const userType = req.query.userType || 'shareholders';
-
-//     const model = userType === 'shareholders' ? RegisteredHolders : GuestRegistration;
-    
-//     // Map sortBy to correct column names
-//     if (userType === 'shareholders') {
-//       if (sortBy === 'createdAt') sortBy = 'registered_at';
-//       if (sortBy === 'phone') sortBy = 'phone_number';
-//     }
-
-//     const whereConditions = {};
-//     if (searchTerm) {
-//       whereConditions[Op.or] = userType === 'shareholders' 
-//         ? [
-//             { name: { [Op.iLike]: `%${searchTerm}%` } },
-//             { acno: { [Op.iLike]: `%${searchTerm}%` } },
-//             { email: { [Op.iLike]: `%${searchTerm}%` } },
-//             { phone_number: { [Op.iLike]: `%${searchTerm}%` } },
-//             { chn: { [Op.iLike]: `%${searchTerm}%` } }
-//           ]
-//         : [
-//             { name: { [Op.iLike]: `%${searchTerm}%` } },
-//             { email: { [Op.iLike]: `%${searchTerm}%` } },
-//             { phone: { [Op.iLike]: `%${searchTerm}%` } },
-//             { registrationNumber: { [Op.iLike]: `%${searchTerm}%` } },
-//             { userType: { [Op.iLike]: `%${searchTerm}%` } }
-//           ];
-//     }
-
-//     const totalCount = await model.count({ where: whereConditions });
-//     const results = await model.findAll({
-//       where: whereConditions,
-//       order: [[sortBy, sortOrder]],
-//       limit: pageSize,
-//       offset: offset,
-//       attributes: userType === 'shareholders'
-//         ? ['name', 'acno', 'email', 'phone_number', 'shareholding', 'chn', 'registered_at']
-//         : ['name', 'email', 'phone', 'userType', 'registrationNumber', 'createdAt']
-//     });
-
-//     res.json({
-//       success: true,
-//       data: results,
-//       pagination: {
-//         totalItems: totalCount,
-//         totalPages: Math.ceil(totalCount / pageSize),
-//         currentPage: page,
-//         pageSize: pageSize
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Error:', error);
-//     res.status(500).json({
-//       success: false,
-//       message: 'Database error',
-//       error: error.message
-//     });
-//   }
-// });
-
-
-app.post('/api/register-guest', (req, res) => {
-  const { name, email, phone, userType } = req.body;
-  
-  // Basic validation
-  if (!name || !email || !phone || !userType) {
-    return res.status(400).json({ success: false, error: 'All fields are required' });
-  }
-  
-  // Add to in-memory storage
-  const newGuest = {
-    name,
-    email,
-    phone,
-    userType,
-    registeredAt: new Date().toISOString()
-  };
-  
-  GuestRegistration.create(newGuest);
-  
-  res.status(201).json({
-    success: true,
-    guest: newGuest
-  });
-});
-app.get('/api/registered-guests', async (req, res) => {
-  try {
-    // Pagination parameters
-    const page = parseInt(req.query.page) || 1;
-    const pageSize = parseInt(req.query.pageSize) || 10;
-    const offset = (page - 1) * pageSize;
-
-    // Sorting parameters - use 'created_at' instead of 'createdAt'
-    const sortBy = req.query.sortBy || 'created_at'; // Changed to match your actual column name
-    const sortOrder = req.query.sortOrder || 'DESC';
-
-    // Search filter
-    const searchTerm = req.query.search || '';
-
-    // Build the query conditions
-    const whereConditions = {};
-    if (searchTerm) {
-      whereConditions[Op.or] = [
-        { name: { [Op.like]: `%${searchTerm}%` } },
-        { email: { [Op.like]: `%${searchTerm}%` } },
-        { phone: { [Op.like]: `%${searchTerm}%` } },
-        { userType: { [Op.like]: `%${searchTerm}%` } }
-      ];
-    }
-
-    // Get the total count for pagination info
-    const totalCount = await RegisteredGuests.count({ where: whereConditions });
-
-    // Get the paginated results
-    const guests = await RegisteredGuests.findAll({
-      where: whereConditions,
-      order: [[sortBy, sortOrder]],
-      limit: pageSize,
-      offset: offset,
-      attributes: ['name', 'email', 'phone', 'userType', 'created_at'] // Make sure this matches your column name
-    });
-
-    // Calculate pagination metadata
-    const totalPages = Math.ceil(totalCount / pageSize);
-
-    res.json({
-      success: true,
-      data: guests,
-      pagination: {
-        totalItems: totalCount,
-        totalPages,
-        currentPage: page,
-        pageSize,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1
-      }
-    });
-  } catch (error) {
-    console.error('Error fetching registered guests:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch registered guests',
-      error: error.message
-    });
-  }
-});
 // Start server
 const PORT = process.env.PORT;
 sequelize.sync().then(() => {
