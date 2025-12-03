@@ -682,6 +682,20 @@ app.post('/api/send-confirmation', async (req, res) => {
   }
 });
 
+// Helper function to format shareholder data
+function formatShareholder(shareholder) {
+  return {
+    acno: shareholder.acno,
+    name: shareholder.name,
+    email: shareholder.email,
+    phone_number: shareholder.phone_number,
+    holdings: shareholder.holdings,
+    chn: shareholder.chn,
+    rin: shareholder.rin,
+    address: shareholder.address
+  };
+}
+
 app.post('/api/check-shareholder', async (req, res) => {
   const { searchTerm } = req.body;
 
@@ -693,7 +707,7 @@ app.post('/api/check-shareholder', async (req, res) => {
 
   try {
     // Check for exact account number match first
-    if (/^\d+$/.test(cleanTerm)) {send 
+    if (/^\d+$/.test(cleanTerm)) {
       const shareholder = await Shareholder.findOne({ 
         where: { acno: cleanTerm } 
       });
@@ -720,7 +734,7 @@ app.post('/api/check-shareholder', async (req, res) => {
       });
     }
 
-    // Advanced name search for PostgreSQL
+    // Name search - simplified to work with any database
     const shareholders = await Shareholder.findAll({
       where: {
         [Op.or]: [
@@ -733,40 +747,25 @@ app.post('/api/check-shareholder', async (req, res) => {
           // Contains term
           { name: { [Op.iLike]: `%${cleanTerm}%` } },
           
-          // Split into words and search for each
+          // Split into words and search for each word
           ...cleanTerm.split(/\s+/).filter(Boolean).map(word => ({
             name: { [Op.iLike]: `%${word}%` }
-          })),
-          
-          // Phonetic search using PostgreSQL's metaphone
-          sequelize.where(
-            sequelize.fn('metaphone', sequelize.col('name'), 4),
-            sequelize.fn('metaphone', cleanTerm, 4)
-          ),
-          
-          // Trigram similarity for fuzzy matching
-          sequelize.where(
-            sequelize.fn('similarity', 
-              sequelize.fn('lower', sequelize.col('name')),
-              cleanTerm.toLowerCase()
-            ),
-            { [Op.gt]: 0.3 } // Adjust threshold as needed
-          )
+          }))
         ]
       },
       order: [
         // Prioritize better matches first
         [sequelize.literal(`
           CASE 
-            WHEN name ILIKE '${cleanTerm}' THEN 0
-            WHEN name ILIKE '${cleanTerm}%' THEN 1
-            WHEN name ILIKE '%${cleanTerm}%' THEN 2
-            ELSE 3 + (1 - similarity(lower(name), '${cleanTerm.toLowerCase()}'))
+            WHEN name ILIKE '${cleanTerm.replace(/'/g, "''")}' THEN 0
+            WHEN name ILIKE '${cleanTerm.replace(/'/g, "''")}%' THEN 1
+            WHEN name ILIKE '%${cleanTerm.replace(/'/g, "''")}%' THEN 2
+            ELSE 3
           END
         `), 'ASC'],
-        [sequelize.col('name'), 'ASC'] // Secondary sort by name
+        ['name', 'ASC'] // Secondary sort by name
       ],
-      limit: 10
+      limit: 50
     });
 
     if (shareholders.length > 0) {
