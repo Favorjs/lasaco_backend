@@ -468,112 +468,6 @@ const GuestRegistration = sequelize.define('guest_registrations', {
 
 const RegisteredGuests = GuestRegistration;
 
-// Check shareholder endpoint - search by name, account number, or CHN
-app.post('/api/check-shareholder', async (req, res) => {
-  try {
-    const { searchTerm } = req.body;
-
-    if (!searchTerm || !searchTerm.trim()) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Search term is required'
-      });
-    }
-
-    const trimmedSearch = searchTerm.trim();
-
-    // First, try exact match by account number
-    const accountMatch = await Shareholder.findOne({
-      where: { acno: trimmedSearch }
-    });
-
-    if (accountMatch) {
-      return res.json({
-        status: 'account_match',
-        shareholder: {
-          acno: accountMatch.acno,
-          name: accountMatch.name,
-          email: accountMatch.email,
-          phone_number: accountMatch.phone_number,
-          holdings: accountMatch.holdings,
-          chn: accountMatch.chn,
-          rin: accountMatch.rin,
-          address: accountMatch.address
-        }
-      });
-    }
-
-    // Second, try exact match by CHN
-    if (trimmedSearch.length >= 5) { // CHN is typically longer
-      const chnMatch = await Shareholder.findOne({
-        where: { chn: trimmedSearch }
-      });
-
-      if (chnMatch) {
-        return res.json({
-          status: 'chn_match',
-          shareholder: {
-            acno: chnMatch.acno,
-            name: chnMatch.name,
-            email: chnMatch.email,
-            phone_number: chnMatch.phone_number,
-            holdings: chnMatch.holdings,
-            chn: chnMatch.chn,
-            rin: chnMatch.rin,
-            address: chnMatch.address
-          }
-        });
-      }
-    }
-
-    // Third, try partial match by name (case-insensitive)
-    const nameMatches = await Shareholder.findAll({
-      where: {
-        name: {
-          [Op.like]: `%${trimmedSearch}%`
-        }
-      },
-      limit: 50, // Limit results to prevent overwhelming response
-      order: [['name', 'ASC']]
-    });
-
-    if (nameMatches && nameMatches.length > 0) {
-      return res.json({
-        status: 'name_matches',
-        shareholders: nameMatches.map(shareholder => ({
-          acno: shareholder.acno,
-          name: shareholder.name,
-          email: shareholder.email,
-          phone_number: shareholder.phone_number,
-          holdings: shareholder.holdings,
-          chn: shareholder.chn,
-          rin: shareholder.rin,
-          address: shareholder.address
-        }))
-      });
-    }
-
-    // No matches found
-    return res.json({
-      status: 'no_match',
-      message: 'No matching shareholders found. Please check your search term and try again.'
-    });
-
-  } catch (error) {
-    console.error('Check shareholder error:', {
-      error: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString(),
-      requestBody: req.body
-    });
-
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to search shareholders. Please try again later.'
-    });
-  }
-});
-
 // Update the /api/send-confirmation endpoint to use Mailgun
 app.post('/api/send-confirmation', async (req, res) => {
   const { acno, email, phone_number } = req.body;
@@ -625,6 +519,115 @@ app.post('/api/send-confirmation', async (req, res) => {
       await Shareholder.update({ email }, { where: { acno } });
       shareholder.email = email;
     }
+
+    app.post('/api/check-shareholder', async (req, res) => {
+      const { searchTerm } = req.body;
+    
+      if (!searchTerm || typeof searchTerm !== 'string') {
+        return res.status(400).json({ error: 'Please provide a valid search term.' });
+      }
+    
+      const cleanTerm = searchTerm.trim();
+    
+      try {
+        // Check for exact account number match first
+        if (/^\d+$/.test(cleanTerm)) {send 
+          const shareholder = await Shareholder.findOne({ 
+            where: { acno: cleanTerm } 
+          });
+    
+          if (shareholder) {
+            return res.json({
+              status: 'account_match',
+              shareholder: formatShareholder(shareholder)
+            });
+          }
+        }
+    
+        // Check for exact CHN match
+        const byChn = await Shareholder.findOne({ 
+          where: { 
+            chn: { [Op.iLike]: cleanTerm } // Case-insensitive match
+          } 
+        });
+    
+        if (byChn) {
+          return res.json({
+            status: 'chn_match',
+            shareholder: formatShareholder(byChn)
+          });
+        }
+    
+        // Advanced name search for PostgreSQL
+        const shareholders = await Shareholder.findAll({
+          where: {
+            [Op.or]: [
+              // Exact match (case-insensitive)
+              { name: { [Op.iLike]: cleanTerm } },
+              
+              // Starts with term
+              { name: { [Op.iLike]: `${cleanTerm}%` } },
+              
+              // Contains term
+              { name: { [Op.iLike]: `%${cleanTerm}%` } },
+              
+              // Split into words and search for each
+              ...cleanTerm.split(/\s+/).filter(Boolean).map(word => ({
+                name: { [Op.iLike]: `%${word}%` }
+              })),
+              
+              // Phonetic search using PostgreSQL's metaphone
+              sequelize.where(
+                sequelize.fn('metaphone', sequelize.col('name'), 4),
+                sequelize.fn('metaphone', cleanTerm, 4)
+              ),
+              
+              // Trigram similarity for fuzzy matching
+              sequelize.where(
+                sequelize.fn('similarity', 
+                  sequelize.fn('lower', sequelize.col('name')),
+                  cleanTerm.toLowerCase()
+                ),
+                { [Op.gt]: 0.3 } // Adjust threshold as needed
+              )
+            ]
+          },
+          order: [
+            // Prioritize better matches first
+            [sequelize.literal(`
+              CASE 
+                WHEN name ILIKE '${cleanTerm}' THEN 0
+                WHEN name ILIKE '${cleanTerm}%' THEN 1
+                WHEN name ILIKE '%${cleanTerm}%' THEN 2
+                ELSE 3 + (1 - similarity(lower(name), '${cleanTerm.toLowerCase()}'))
+              END
+            `), 'ASC'],
+            [sequelize.col('name'), 'ASC'] // Secondary sort by name
+          ],
+          limit: 10
+        });
+    
+        if (shareholders.length > 0) {
+          return res.json({
+            status: 'name_matches',
+            shareholders: shareholders.map(formatShareholder)
+          });
+        }
+    
+        return res.json({ 
+          status: 'not_found', 
+          message: 'No matching shareholders found.' 
+        });
+    
+      } catch (error) {
+        console.error('Search error:', error);
+        res.status(500).json({ 
+          error: 'Internal server error.',
+          details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+      }
+    });
+    
 
     // Update phone number if provided
     let finalPhoneNumber = shareholder.phone_number;
