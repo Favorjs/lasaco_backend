@@ -520,114 +520,7 @@ app.post('/api/send-confirmation', async (req, res) => {
       shareholder.email = email;
     }
 
-    app.post('/api/check-shareholder', async (req, res) => {
-      const { searchTerm } = req.body;
-    
-      if (!searchTerm || typeof searchTerm !== 'string') {
-        return res.status(400).json({ error: 'Please provide a valid search term.' });
-      }
-    
-      const cleanTerm = searchTerm.trim();
-    
-      try {
-        // Check for exact account number match first
-        if (/^\d+$/.test(cleanTerm)) {send 
-          const shareholder = await Shareholder.findOne({ 
-            where: { acno: cleanTerm } 
-          });
-    
-          if (shareholder) {
-            return res.json({
-              status: 'account_match',
-              shareholder: formatShareholder(shareholder)
-            });
-          }
-        }
-    
-        // Check for exact CHN match
-        const byChn = await Shareholder.findOne({ 
-          where: { 
-            chn: { [Op.iLike]: cleanTerm } // Case-insensitive match
-          } 
-        });
-    
-        if (byChn) {
-          return res.json({
-            status: 'chn_match',
-            shareholder: formatShareholder(byChn)
-          });
-        }
-    
-        // Advanced name search for PostgreSQL
-        const shareholders = await Shareholder.findAll({
-          where: {
-            [Op.or]: [
-              // Exact match (case-insensitive)
-              { name: { [Op.iLike]: cleanTerm } },
-              
-              // Starts with term
-              { name: { [Op.iLike]: `${cleanTerm}%` } },
-              
-              // Contains term
-              { name: { [Op.iLike]: `%${cleanTerm}%` } },
-              
-              // Split into words and search for each
-              ...cleanTerm.split(/\s+/).filter(Boolean).map(word => ({
-                name: { [Op.iLike]: `%${word}%` }
-              })),
-              
-              // Phonetic search using PostgreSQL's metaphone
-              sequelize.where(
-                sequelize.fn('metaphone', sequelize.col('name'), 4),
-                sequelize.fn('metaphone', cleanTerm, 4)
-              ),
-              
-              // Trigram similarity for fuzzy matching
-              sequelize.where(
-                sequelize.fn('similarity', 
-                  sequelize.fn('lower', sequelize.col('name')),
-                  cleanTerm.toLowerCase()
-                ),
-                { [Op.gt]: 0.3 } // Adjust threshold as needed
-              )
-            ]
-          },
-          order: [
-            // Prioritize better matches first
-            [sequelize.literal(`
-              CASE 
-                WHEN name ILIKE '${cleanTerm}' THEN 0
-                WHEN name ILIKE '${cleanTerm}%' THEN 1
-                WHEN name ILIKE '%${cleanTerm}%' THEN 2
-                ELSE 3 + (1 - similarity(lower(name), '${cleanTerm.toLowerCase()}'))
-              END
-            `), 'ASC'],
-            [sequelize.col('name'), 'ASC'] // Secondary sort by name
-          ],
-          limit: 10
-        });
-    
-        if (shareholders.length > 0) {
-          return res.json({
-            status: 'name_matches',
-            shareholders: shareholders.map(formatShareholder)
-          });
-        }
-    
-        return res.json({ 
-          status: 'not_found', 
-          message: 'No matching shareholders found.' 
-        });
-    
-      } catch (error) {
-        console.error('Search error:', error);
-        res.status(500).json({ 
-          error: 'Internal server error.',
-          details: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-      }
-    });
-    
+
 
     // Update phone number if provided
     let finalPhoneNumber = shareholder.phone_number;
@@ -785,6 +678,114 @@ app.post('/api/send-confirmation', async (req, res) => {
       success: false,
       error: 'Failed to process registration request',
       details: process.env.NODE_ENV === 'development' ? error.message : 'Please try again later'
+    });
+  }
+});
+
+app.post('/api/check-shareholder', async (req, res) => {
+  const { searchTerm } = req.body;
+
+  if (!searchTerm || typeof searchTerm !== 'string') {
+    return res.status(400).json({ error: 'Please provide a valid search term.' });
+  }
+
+  const cleanTerm = searchTerm.trim();
+
+  try {
+    // Check for exact account number match first
+    if (/^\d+$/.test(cleanTerm)) {send 
+      const shareholder = await Shareholder.findOne({ 
+        where: { acno: cleanTerm } 
+      });
+
+      if (shareholder) {
+        return res.json({
+          status: 'account_match',
+          shareholder: formatShareholder(shareholder)
+        });
+      }
+    }
+
+    // Check for exact CHN match
+    const byChn = await Shareholder.findOne({ 
+      where: { 
+        chn: { [Op.iLike]: cleanTerm } // Case-insensitive match
+      } 
+    });
+
+    if (byChn) {
+      return res.json({
+        status: 'chn_match',
+        shareholder: formatShareholder(byChn)
+      });
+    }
+
+    // Advanced name search for PostgreSQL
+    const shareholders = await Shareholder.findAll({
+      where: {
+        [Op.or]: [
+          // Exact match (case-insensitive)
+          { name: { [Op.iLike]: cleanTerm } },
+          
+          // Starts with term
+          { name: { [Op.iLike]: `${cleanTerm}%` } },
+          
+          // Contains term
+          { name: { [Op.iLike]: `%${cleanTerm}%` } },
+          
+          // Split into words and search for each
+          ...cleanTerm.split(/\s+/).filter(Boolean).map(word => ({
+            name: { [Op.iLike]: `%${word}%` }
+          })),
+          
+          // Phonetic search using PostgreSQL's metaphone
+          sequelize.where(
+            sequelize.fn('metaphone', sequelize.col('name'), 4),
+            sequelize.fn('metaphone', cleanTerm, 4)
+          ),
+          
+          // Trigram similarity for fuzzy matching
+          sequelize.where(
+            sequelize.fn('similarity', 
+              sequelize.fn('lower', sequelize.col('name')),
+              cleanTerm.toLowerCase()
+            ),
+            { [Op.gt]: 0.3 } // Adjust threshold as needed
+          )
+        ]
+      },
+      order: [
+        // Prioritize better matches first
+        [sequelize.literal(`
+          CASE 
+            WHEN name ILIKE '${cleanTerm}' THEN 0
+            WHEN name ILIKE '${cleanTerm}%' THEN 1
+            WHEN name ILIKE '%${cleanTerm}%' THEN 2
+            ELSE 3 + (1 - similarity(lower(name), '${cleanTerm.toLowerCase()}'))
+          END
+        `), 'ASC'],
+        [sequelize.col('name'), 'ASC'] // Secondary sort by name
+      ],
+      limit: 10
+    });
+
+    if (shareholders.length > 0) {
+      return res.json({
+        status: 'name_matches',
+        shareholders: shareholders.map(formatShareholder)
+      });
+    }
+
+    return res.json({ 
+      status: 'not_found', 
+      message: 'No matching shareholders found.' 
+    });
+
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ 
+      error: 'Internal server error.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
