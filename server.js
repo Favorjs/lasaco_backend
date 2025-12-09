@@ -468,6 +468,61 @@ const GuestRegistration = sequelize.define('guest_registrations', {
 
 const RegisteredGuests = GuestRegistration;
 
+// List registered users with pagination and search
+app.get('/api/registered-users', async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize, 10) || 10, 1), 100);
+    const sortBy = ['registered_at', 'name', 'email', 'acno'].includes(req.query.sortBy)
+      ? req.query.sortBy
+      : 'registered_at';
+    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC';
+    const search = (req.query.search || '').trim();
+
+    const likeOperator = sequelize.getDialect() === 'postgres' ? Op.iLike : Op.like;
+
+    const whereClause = search
+      ? {
+          [Op.or]: [
+            { name: { [likeOperator]: `%${search}%` } },
+            { email: { [likeOperator]: `%${search}%` } },
+            { phone_number: { [likeOperator]: `%${search}%` } },
+            { acno: { [likeOperator]: `%${search}%` } },
+          ],
+        }
+      : {};
+
+    const { rows, count } = await RegisteredUser.findAndCountAll({
+      where: whereClause,
+      order: [[sortBy, sortOrder]],
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+
+    res.json({
+      data: rows.map((user) => ({
+        id: user.id,
+        name: user.name,
+        acno: user.acno,
+        email: user.email,
+        phone_number: user.phone_number,
+        holdings: user.holdings,
+        chn: user.chn,
+        registered_at: user.registered_at,
+      })),
+      pagination: {
+        page,
+        pageSize,
+        total: count,
+        totalPages: Math.ceil(count / pageSize),
+      },
+    });
+  } catch (error) {
+    console.error('Registered users fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch registered users' });
+  }
+});
+
 // Update the /api/send-confirmation endpoint to use Mailgun
 app.post('/api/send-confirmation', async (req, res) => {
   const { acno, email, phone_number } = req.body;
