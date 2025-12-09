@@ -506,6 +506,8 @@ app.get('/api/registered-users', async (req, res) => {
         acno: user.acno,
         email: user.email,
         phone_number: user.phone_number,
+        // Provide both keys for compatibility with frontend expectations
+        shareholding: user.holdings,
         holdings: user.holdings,
         chn: user.chn,
         registered_at: user.registered_at,
@@ -514,6 +516,7 @@ app.get('/api/registered-users', async (req, res) => {
         page,
         pageSize,
         total: count,
+        totalItems: count, // alias for frontend pagination summary
         totalPages: Math.ceil(count / pageSize),
       },
     });
